@@ -19,6 +19,10 @@ class Food:
         self.desc = desc
         self.pic = pic
 
+    def __str__(self) :
+        return self.name
+    
+
 class Meal:
     def __init__(self, name, foods, stores={}, desc="", pic=None):
         self.name = name
@@ -94,6 +98,8 @@ class Meal:
             "protein" : prot,
             "fat" : fat
         }
+    def __str__(self) :
+        return self.name
 
 def main() :
     apple = Food("apple", {"cub, target, walmart, co-op"}, 2.0, 40, 2, 0, 1, "Honeycrisp apple")
@@ -103,7 +109,8 @@ def main() :
 
     print(apple_pie.get_macros())
     print(apple_pie.get_price())
-    print(apple_pie.foods)
+    for food in apple_pie.foods :
+        print(f"{food} x{apple_pie.foods[food]}")
 
 
 if __name__ == "__main__" :
