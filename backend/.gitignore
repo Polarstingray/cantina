@@ -1,0 +1,4 @@
+*.pkl
+*db
+*.bin
+*.tmp
