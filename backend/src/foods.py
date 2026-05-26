@@ -8,7 +8,7 @@ meal - *name, list of foods, helper functions for calculating total cost and mac
 '''
 
 class Food:
-    def __init__(self, name, stores={}, cost=0.0, cals=0, carbs=0.0, prot=0.0, fat=0.0, desc="", pic=None):
+    def __init__(self, name, stores=[], cost=0.0, cals=0, carbs=0.0, prot=0.0, fat=0.0, desc="", pic=None):
         self.name = name
         self.stores = stores
         self.cost = cost
@@ -19,12 +19,36 @@ class Food:
         self.desc = desc
         self.pic = pic
 
+    def create(name, stores=[], cost=0.0, macros=[], desc="", pic=None) :
+        return Food(name, stores, cost, *macros, desc, pic)
+    
+    def create(food_json) :
+        cals, carbs, prot, fat = food_json.get("macros")
+        macros = [int(cals), float(carbs), float(prot), float(fat)]
+        return Food(food_json.get("name"),
+                    food_json.get("stores"),
+                    food_json.get("cost"),
+                    macros,
+                    food_json.get("desc"),
+                    food_json.get("pic"))
+    
+    # Serialize food as json to be stored in binary and later sqlite db
+    def food_to_json(self) :
+        return {
+            "name" : self.name, 
+            "stores" : self.stores, 
+            "cost" : str(self.cost), 
+            "macros" : [str(self.cals), str(self.carbs), str(self.protein), str(self.fat)], 
+            "desc" : self.desc, 
+            "pic" : self.pic
+        }
+
     def __str__(self) :
         return self.name
     
 
 class Meal:
-    def __init__(self, name, foods, stores={}, desc="", pic=None):
+    def __init__(self, name, foods, stores=[], desc="", pic=None):
         self.name = name
         self.desc = desc
         self.pic = pic
@@ -42,6 +66,28 @@ class Meal:
         for food, amount in self.foods.items() :
             total += food.cost * amount
         return total
+    
+    def create(name, foods, stores=[], desc="", pic=None) :
+        return Meal(name, foods, stores, desc, pic)
+    
+    def create(meal_json) :
+        return Meal(meal_json.get("name"),
+                    meal_json.get("foods"),
+                    meal_json.get("desc"),
+                    meal_json.get("pic"))
+    
+    # This will be used to serialize meals to/from binary.
+    def meal_to_json(self) :
+        food_list=[]
+        for food in self.foods :
+            food_list.append(food.food_to_json())
+
+        return {"name" : self.name, 
+                "foods": food_list, 
+                "desc" : self.desc, 
+                "pic" : self.pic} 
+    
+
 
     def add_food(self, food, amount=1) :
         if not food :
@@ -102,8 +148,8 @@ class Meal:
         return self.name
 
 def main() :
-    apple = Food("apple", {"cub, target, walmart, co-op"}, 2.0, 40, 2, 0, 1, "Honeycrisp apple")
-    crust = Food("pie crust", "cub, target", 3.99, 100, 20, 4, 5, "Sweet-Butter pie crust")
+    apple = Food("apple", ["cub, target, walmart, co-op"], 2.0, 40, 2, 0, 1, "Honeycrisp apple")
+    crust = Food("pie crust", ["cub", "target"], 3.99, 100, 20, 4, 5, "Sweet-Butter pie crust")
 
     apple_pie = Meal("apple pie", [apple, apple, apple, crust], {}, "an apple pie")
 
@@ -111,6 +157,8 @@ def main() :
     print(apple_pie.get_price())
     for food in apple_pie.foods :
         print(f"{food} x{apple_pie.foods[food]}")
+
+
 
 
 if __name__ == "__main__" :

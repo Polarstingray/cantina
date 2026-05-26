@@ -24,7 +24,7 @@ data - list of list of foods and meals
     2nd list is Meals
 '''
 def write_db(data, db=FOOD_AND_MEALS) :
-    with open(db, 'wb') as f:
+    with open(db, 'wb+') as f:
         pickle.dump(data, f)
 
 def unique_list(dat1, dat2) :
@@ -40,7 +40,7 @@ def add_to_db(data, db=FOOD_AND_MEALS) :
     if len(data) > 1 :
         curr_data = read_db(db)
         if (not curr_data) :
-            write_db(list(set(data[0])), list(set(data[1])))
+            write_db(((unique_list(data[0], [])), unique_list(data[1], [])))
         if (len(curr_data) > 1) :
             unique_foods = unique_list(curr_data[0], data[0])
             unique_meals = unique_list(curr_data[1], data[1])
@@ -53,7 +53,7 @@ def add_to_db(data, db=FOOD_AND_MEALS) :
     return -1
 
 def read_db(db=FOOD_AND_MEALS) :
-    with open(db, "rb") as f:
+    with open(db, "rb+") as f:
         data =pickle.load(f)
     return data
 
@@ -76,13 +76,9 @@ def rm_from_db(name, db=FOOD_AND_MEALS) :
     return 1
 
         
-
-
-
-
 def main() :
-    apple = Food("apple", {"cub, target, walmart, co-op"}, 2.0, 40, 2, 0, 1, "Honeycrisp apple")
-    crust = Food("pie crust", "cub, target", 3.99, 100, 20, 4, 5, "Sweet-Butter pie crust")
+    apple = Food("apple", ["cub, target, walmart, co-op"], 2.0, 40, 2, 0, 1, "Honeycrisp apple")
+    crust = Food("pie crust", ["cub", "target"], 3.99, 100, 20, 4, 5, "Sweet-Butter pie crust")
 
     apple_pie = Meal("apple pie", [apple, apple, apple, crust], {}, "an apple pie")
     
@@ -100,8 +96,8 @@ def main() :
         for ele in item :
             print(ele)
 
-    rice = Food("rice", {"cub, target, walmart, co-op"}, 13.99, 100, 30, 5, 1, "jasmine rice")
-    pizza_crust = Food("pie crust", "cub, target", 3.99, 100, 20, 3, 2, "pizza dough")
+    rice = Food("rice", ["cub, target, walmart, co-op"], 13.99, 100, 30, 5, 1, "jasmine rice")
+    pizza_crust = Food("pie crust", ["cub", "target"], 3.99, 100, 20, 3, 2, "pizza dough")
 
     mystery_meal = Meal("nonsense", [rice, apple, pizza_crust, crust], {}, "an apple pie")
 
