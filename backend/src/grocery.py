@@ -10,6 +10,7 @@ import os
 import json
 from foods import *
 FOOD_AND_MEALS=os.path.join(os.path.dirname(__file__), "data.bin")
+INVENTORY=os.path.join(os.path.dirname(__file__), "inventory.bin")
 
 # Food and Meal database
 # A single binary file holding a json list of serialized food and meal objects.
@@ -85,6 +86,7 @@ def add_to_bin(item, db=FOOD_AND_MEALS) :
     new_db = objects_to_jsons(jsons_to_objects(old_db)) # ensures no duplicates
     write_json_to_bin(new_db, db)        
     return
+
 
         
 def main() :
