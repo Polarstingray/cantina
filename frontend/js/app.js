@@ -279,16 +279,11 @@ async function onLookupBarcode() {
 }
 
 async function onScanBarcode() {
-    if (!("BarcodeDetector" in window)) {
-        // graceful fallback: just prompt for manual entry
-        const code = window.prompt("This browser can't access the camera scanner. Enter the barcode manually:");
-        if (!code) return;
-        const form = $("add-food-form");
-        form.elements.barcode.value = code.trim();
-        return onLookupBarcode();
-    }
+    // We only attach this handler when the BarcodeDetector API is present
+    // (see wireDashboardForms). The user-facing alternative on iOS/Safari is
+    // to type the barcode into the input next to Lookup -- no camera needed.
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        return setStatus("This browser can't access the camera.");
+        return setStatus("This page needs HTTPS to access the camera. Type the barcode manually and hit Lookup.");
     }
     await startScannerModal();
 }
@@ -813,8 +808,23 @@ function foodBodyFromForm(f, nameOverride) {
     };
 }
 
+// Surface HTML5-validation failures (e.g. number not on the input's step grid)
+// so the form doesn't silently refuse to submit. Returns true if the form is
+// OK to submit, false if a problem was already reported via setStatus.
+function reportFormValidity(form) {
+    if (form.checkValidity()) return true;
+    const bad = [];
+    for (const elt of form.elements) {
+        if (!elt.checkValidity || elt.checkValidity()) continue;
+        bad.push(`${elt.name || elt.id || "field"}: ${elt.validationMessage}`);
+    }
+    setStatus("Can't save: " + (bad.join(" · ") || "form is invalid."));
+    return false;
+}
+
 async function onAddFood(e) {
     e.preventDefault();
+    if (!reportFormValidity(e.target)) return;
     const body = foodBodyFromForm(readForm(e.target));
     if (!body.name) return setStatus("Food needs a name.");
     try {
@@ -1078,12 +1088,30 @@ function wireDashboardForms() {
             setStatus("");
         });
     }
+    // Turn off built-in HTML5 validation so a stray step/min/required problem
+    // doesn't silently block submission. We still check validity in the
+    // handler via reportFormValidity and surface the specific field that broke.
+    for (const form of [$("add-food-form"), $("add-meal-form"), $("add-list-form")]) {
+        if (form) form.noValidate = true;
+    }
     $("add-food-form").addEventListener("submit", onAddFood);
     $("add-meal-form").addEventListener("submit", onAddMeal);
     $("add-list-form").addEventListener("submit", onAddListFromDashboard);
     $("add-ingredient").addEventListener("click", addIngredientRow);
     $("lookup-btn").addEventListener("click", onLookupBarcode);
-    $("scan-btn").addEventListener("click", onScanBarcode);
+    // Camera scan only works on browsers with BarcodeDetector (Chrome on
+    // Android, Edge on Android). iOS Safari/Chrome don't ship it -- and they
+    // would also need HTTPS to access the camera even if they did. Hide the
+    // button on those browsers so it can't confuse anyone; the manual Lookup
+    // button next to the barcode input still works.
+    const scanBtn = $("scan-btn");
+    if (scanBtn) {
+        if ("BarcodeDetector" in window) {
+            scanBtn.addEventListener("click", onScanBarcode);
+        } else {
+            scanBtn.hidden = true;
+        }
+    }
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
