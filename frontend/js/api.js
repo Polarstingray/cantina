@@ -142,3 +142,36 @@ export function checkOffList(body) {
 export function clearList() {
     return request("/list/clear", { method: "POST" });
 }
+
+// --- spending log --------------------------------------------------------
+
+// GET /spending  -> [{id, ts, name, qty, unit_cost, total, source}, ...]
+// Optional `since` ("YYYY-MM-DD" or ISO) filters out older entries.
+export function getSpending(since) {
+    const q = since ? `?since=${encodeURIComponent(since)}` : "";
+    return request("/spending" + q);
+}
+
+// GET /spending/totals?bucket=week|month -> {"YYYY-Www": $$$, ...}
+export function getSpendingTotals(bucket = "week") {
+    return request(`/spending/totals?bucket=${encodeURIComponent(bucket)}`);
+}
+
+// POST /spending body: {name, qty, unit_cost, source?}
+export function addSpending(body) {
+    return request("/spending", { method: "POST", body: JSON.stringify(body) });
+}
+
+// DELETE /spending/{id}
+export function deleteSpending(id) {
+    return request(`/spending/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+// Sugar calls for the explicit Purchase affordance in the check-off and
+// stock-add flows: pre-stamp the spending source server-side.
+export function logCheckoffPurchase(body) {
+    return request("/spending/from-checkoff", { method: "POST", body: JSON.stringify(body) });
+}
+export function logStockPurchase(body) {
+    return request("/spending/from-stock-add", { method: "POST", body: JSON.stringify(body) });
+}

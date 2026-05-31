@@ -21,6 +21,7 @@ import inventory
 import menu
 import shopping
 import lookup
+import spending
 
 app = FastAPI(title="Cantina")
 
@@ -86,6 +87,16 @@ class ListItemIn(BaseModel) :
 class CheckOffIn(BaseModel) :
     name: SafeName
     to_inventory: Annotated[float, Field(ge=0)] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _v_name(cls, v) : return _check_name(v)
+
+class PurchaseIn(BaseModel) :
+    name: SafeName
+    qty: Annotated[float, Field(gt=0)] = 1.0
+    unit_cost: Annotated[float, Field(ge=0)] = 0.0
+    source: Literal["checkoff", "stock", "manual"] = "manual"
 
     @field_validator("name")
     @classmethod
@@ -249,6 +260,42 @@ def list_check(body: CheckOffIn) :
 def list_clear() :
     shopping.clear()
     return {"ok" : True}
+
+
+# --- spending log ----------------------------------------------------------
+
+@app.get("/spending")
+def get_spending(since: str | None = None, until: str | None = None) :
+    return spending.read_entries(since=since, until=until)
+
+@app.get("/spending/totals")
+def get_spending_totals(bucket: Literal["week", "month"] = "week") :
+    return spending.totals_by_week() if bucket == "week" else spending.totals_by_month()
+
+@app.post("/spending")
+def post_spending(body: PurchaseIn) :
+    entry = spending.add_entry(body.name, body.qty, body.unit_cost, body.source)
+    if entry is None :
+        raise HTTPException(status_code=400, detail="qty must be > 0, unit_cost >= 0")
+    return entry
+
+@app.delete("/spending/{entry_id}")
+def delete_spending(entry_id: int) :
+    if spending.delete_entry(entry_id) != 0 :
+        raise HTTPException(status_code=404, detail=f"no spending entry id={entry_id}")
+    return {"ok" : True}
+
+# Sugar endpoints so the frontend doesn't have to remember which "source"
+# string to send when logging a purchase that came from one of the flows.
+@app.post("/spending/from-checkoff")
+def post_spending_from_checkoff(body: PurchaseIn) :
+    body.source = "checkoff"
+    return post_spending(body)
+
+@app.post("/spending/from-stock-add")
+def post_spending_from_stock_add(body: PurchaseIn) :
+    body.source = "stock"
+    return post_spending(body)
 
 
 # --- static frontend -------------------------------------------------------

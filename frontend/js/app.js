@@ -405,18 +405,19 @@ function openStockPanel(name) {
     if (!slot) return;
     slot.innerHTML = "";
 
-    let amtInput;
+    const catalogFood = foodByName(name);
+    const catalogCost = catalogFood ? parseFloat(catalogFood.cost) || 0 : 0;
+
+    let amtInput, costInput, logBox;
     const form = el("form", { class: "form stock-panel",
         onsubmit: async (e) => {
             e.preventDefault();
             const amt = parseFloat(amtInput.value) || 0;
             if (amt <= 0) return setStatus("Amount must be positive.");
-            try {
-                await api.addStock({ name, amount: amt, kind: "food" });
-                setStatus(`Stocked ${fmtQty(amt)} × ${name}.`, "info");
-                slot.innerHTML = "";
-                await loadAll();
-            } catch (err) { setStatus(err.message); }
+            const logIt = logBox.checked;
+            const unitCost = parseFloat(costInput.value) || 0;
+            slot.innerHTML = "";
+            await onStockAdd(name, amt, logIt ? { qty: amt, unit_cost: unitCost } : null);
         } }, [
         el("div", { class: "detail-head" }, [
             el("h3", { textContent: `Stock "${name}"` }),
@@ -426,6 +427,18 @@ function openStockPanel(name) {
         el("div", { class: "form-grid" }, [
             el("label", {}, [document.createTextNode("Amount"),
                 (amtInput = el("input", { type: "number", min: "0.5", step: "0.5", value: "1" }))]),
+        ]),
+        el("div", { class: "purchase-fields" }, [
+            el("label", {}, [
+                (logBox = el("input", { type: "checkbox",
+                    checked: catalogCost > 0 })),
+                document.createTextNode(" Log as purchase"),
+            ]),
+            el("label", {}, [
+                document.createTextNode(" $ paid per unit "),
+                (costInput = el("input", { type: "number",
+                    min: "0", step: "0.01", value: String(catalogCost.toFixed(2)) })),
+            ]),
         ]),
         el("div", { class: "form-actions" }, [
             el("button", { type: "submit", textContent: "Confirm" }),
@@ -770,15 +783,36 @@ function listRow(name, qty) {
 function toggleCheckRow(row, name, qty) {
     const existing = row.querySelector(".check-form");
     if (existing) { existing.remove(); return; }
+
+    const f = foodByName(name);
+    const catalogCost = f ? parseFloat(f.cost) || 0 : 0;
+
     const form = el("form", { class: "check-form",
-        onsubmit: (e) => { e.preventDefault();
+        onsubmit: async (e) => {
+            e.preventDefault();
             const n = parseFloat(e.target.elements.n.value);
-            onCheckOff(name, isNaN(n) ? qty : n); } }, [
+            const moved = isNaN(n) ? qty : n;
+            const logIt = e.target.elements.log_purchase.checked;
+            const unitCost = parseFloat(e.target.elements.unit_cost.value) || 0;
+            await onCheckOff(name, moved, logIt ? { qty: moved, unit_cost: unitCost } : null);
+        } }, [
         el("label", {}, [
             document.createTextNode("Move to inventory: "),
             el("input", { type: "number", name: "n", min: "0", step: "0.5",
                 max: fmtQty(qty), value: fmtQty(qty) }),
             document.createTextNode(` of ${fmtQty(qty)}`),
+        ]),
+        el("div", { class: "purchase-fields" }, [
+            el("label", {}, [
+                el("input", { type: "checkbox", name: "log_purchase",
+                    checked: catalogCost > 0 }),
+                document.createTextNode(" Log as purchase"),
+            ]),
+            el("label", {}, [
+                document.createTextNode(" $ paid per unit "),
+                el("input", { type: "number", name: "unit_cost",
+                    min: "0", step: "0.01", value: String(catalogCost.toFixed(2)) }),
+            ]),
         ]),
         el("button", { type: "submit", textContent: "Confirm" }),
         el("button", { type: "button", class: "ghost", textContent: "Cancel",
@@ -797,12 +831,14 @@ function renderInventoryPage() {
     const mealEntries = Object.entries(inv.meals || {});
 
     const stockForm = el("form", { class: "form",
-        onsubmit: (e) => {
+        onsubmit: async (e) => {
             e.preventDefault();
             const name = e.target.elements.name.value.trim();
             const amount = parseFloat(e.target.elements.amount.value) || 1;
             if (!name || amount <= 0) return setStatus("Need a name and a positive amount.");
-            onStockAdd(name, amount);
+            const logIt = e.target.elements.log_purchase.checked;
+            const unitCost = parseFloat(e.target.elements.unit_cost.value) || 0;
+            await onStockAdd(name, amount, logIt ? { qty: amount, unit_cost: unitCost } : null);
             e.target.reset();
         } }, [
         el("div", { class: "form-grid" }, [
@@ -811,6 +847,16 @@ function renderInventoryPage() {
                     placeholder: "type a name" })]),
             el("label", {}, [document.createTextNode("Amount"),
                 el("input", { name: "amount", type: "number", min: "0.5", step: "0.5", value: "1" })]),
+        ]),
+        el("div", { class: "purchase-fields" }, [
+            el("label", {}, [
+                el("input", { type: "checkbox", name: "log_purchase" }),
+                document.createTextNode(" Log as purchase"),
+            ]),
+            el("label", {}, [
+                document.createTextNode(" $ paid per unit "),
+                el("input", { type: "number", name: "unit_cost", min: "0", step: "0.01", value: "0" }),
+            ]),
         ]),
         el("div", { class: "form-actions" }, [
             el("button", { type: "submit", textContent: "Stock it" }),
@@ -876,6 +922,179 @@ function bulkInventoryRow(name, qty, kind) {
             setForm,
         ]),
     ]);
+}
+
+// ===========================================================================
+// SPENDING page
+// ===========================================================================
+
+const SINCE_OPTIONS = [
+    ["7d",  "Last 7 days",  7],
+    ["30d", "Last 30 days", 30],
+    ["90d", "Last 90 days", 90],
+    ["all", "All time",     null],
+];
+
+function sinceParam(key) {
+    const opt = SINCE_OPTIONS.find((o) => o[0] === key);
+    if (!opt || opt[2] === null) return undefined;
+    const d = new Date();
+    d.setDate(d.getDate() - opt[2]);
+    return d.toISOString().slice(0, 10);
+}
+
+// Module-level so re-renders during the same /spending visit remember the
+// user's filter without bouncing back to the default.
+let spendingFilter = "30d";
+
+async function renderSpendingPage() {
+    const view = $("view-spending");
+    view.innerHTML = "";
+    view.appendChild(backLink());
+
+    // Load everything in parallel.
+    let entries, weeks, months;
+    try {
+        [entries, weeks, months] = await Promise.all([
+            api.getSpending(sinceParam(spendingFilter)),
+            api.getSpendingTotals("week"),
+            api.getSpendingTotals("month"),
+        ]);
+    } catch (err) {
+        view.appendChild(el("div", { class: "empty", textContent: `Could not load spending: ${err.message}` }));
+        return;
+    }
+
+    // ---- header (totals) ------------------------------------------------
+    const weekKeys = Object.keys(weeks);
+    const monthKeys = Object.keys(months);
+    const thisWeekTotal  = weekKeys.length  ? weeks[weekKeys[weekKeys.length - 1]]   : 0;
+    const thisMonthTotal = monthKeys.length ? months[monthKeys[monthKeys.length - 1]] : 0;
+
+    view.appendChild(el("section", { class: "detail" }, [
+        el("div", { class: "detail-head" }, [
+            el("h2", { textContent: "Spending" }),
+        ]),
+        el("div", { class: "stats" }, [
+            el("div", {}, [el("span", { class: "muted", textContent: "This week: " }),
+                           el("strong", { textContent: `$${thisWeekTotal.toFixed(2)}` })]),
+            el("div", {}, [el("span", { class: "muted", textContent: "This month: " }),
+                           el("strong", { textContent: `$${thisMonthTotal.toFixed(2)}` })]),
+            el("div", {}, [el("span", { class: "muted", textContent: "Showing: " }),
+                           el("strong", { textContent: `${entries.length} entries (${SINCE_OPTIONS.find((o) => o[0] === spendingFilter)[1].toLowerCase()})` })]),
+        ]),
+    ]));
+
+    // ---- bars: last 12 weeks -------------------------------------------
+    view.appendChild(renderWeeklyBars(weeks));
+
+    // ---- filter row ----------------------------------------------------
+    view.appendChild(el("section", { class: "detail" }, [
+        el("h3", { textContent: "Recent purchases" }),
+        el("div", { class: "filter-row" },
+            SINCE_OPTIONS.map(([key, label]) => el("button", {
+                class: "ghost" + (key === spendingFilter ? " active" : ""),
+                textContent: label,
+                onclick: () => { spendingFilter = key; renderSpendingPage(); },
+            }))),
+        renderSpendingTable(entries),
+    ]));
+
+    // ---- manual add ----------------------------------------------------
+    view.appendChild(renderManualSpendingForm());
+}
+
+function renderWeeklyBars(weeks) {
+    const entries = Object.entries(weeks);   // already oldest -> newest
+    const maxVal = Math.max(0.01, ...entries.map(([, v]) => v));
+    const section = el("section", { class: "detail" }, [
+        el("h3", { textContent: "Last 12 weeks" }),
+        el("div", { class: "bars" },
+            entries.map(([key, val]) => {
+                const pct = Math.round((val / maxVal) * 100);
+                // "2026-W22" -> "W22"
+                const label = key.split("-")[1] || key;
+                const bar = el("div", { class: "bar", title: `${key}: $${val.toFixed(2)}` });
+                bar.style.setProperty("--h", `${pct}%`);
+                return el("div", { class: "bar-col" }, [
+                    el("div", { class: "bar-val", textContent: val > 0 ? `$${val.toFixed(0)}` : "" }),
+                    bar,
+                    el("div", { class: "bar-label", textContent: label }),
+                ]);
+            })),
+    ]);
+    return section;
+}
+
+function renderSpendingTable(entries) {
+    if (!entries.length) {
+        return el("div", { class: "empty", textContent: "No purchases in this window." });
+    }
+    const rows = entries.map((e) => el("div", { class: "spend-row" }, [
+        el("span", { class: "spend-date", textContent: (e.ts || "").slice(0, 10) }),
+        foodByName(e.name)
+            ? el("a", { class: "spend-name", href: `#/food/${encodeURIComponent(e.name)}`, textContent: e.name })
+            : el("span", { class: "spend-name", textContent: e.name }),
+        el("span", { class: "spend-qty", textContent: `× ${fmtQty(e.qty)}` }),
+        el("span", { class: "spend-cost", textContent: `@ $${(+e.unit_cost).toFixed(2)}` }),
+        el("span", { class: "spend-total", textContent: `$${(+e.total).toFixed(2)}` }),
+        el("span", { class: "spend-source muted", textContent: e.source }),
+        el("button", { class: "icon ghost danger-text", title: "delete", textContent: "×",
+            onclick: () => onDeleteSpending(e.id) }),
+    ]));
+    return el("div", { class: "spend-table" }, rows);
+}
+
+function renderManualSpendingForm() {
+    const dlId = "spend-food-options";
+    const datalist = el("datalist", { id: dlId },
+        state.foods.map((f) => el("option", { value: f.name })));
+    return el("section", { class: "detail" }, [
+        el("details", { class: "disclosure" }, [
+            el("summary", { textContent: "Log a past purchase manually" }),
+            el("form", { class: "form",
+                onsubmit: (e) => { e.preventDefault(); onAddManualSpending(e.target); } }, [
+                datalist,
+                el("div", { class: "form-grid" }, [
+                    el("label", { class: "wide" }, [document.createTextNode("Item"),
+                        el("input", { name: "name", required: true, list: dlId,
+                            placeholder: "type or pick from catalog" })]),
+                    el("label", {}, [document.createTextNode("Qty"),
+                        el("input", { name: "qty", type: "number", min: "0.5", step: "0.5", value: "1" })]),
+                    el("label", {}, [document.createTextNode("$ paid per unit"),
+                        el("input", { name: "unit_cost", type: "number", min: "0", step: "0.01", value: "0" })]),
+                ]),
+                el("div", { class: "form-actions" }, [
+                    el("button", { type: "submit", textContent: "Log purchase" }),
+                ]),
+            ]),
+        ]),
+    ]);
+}
+
+async function onAddManualSpending(form) {
+    const f = readForm(form);
+    const body = {
+        name: (f.name || "").trim(),
+        qty: parseFloat(f.qty) || 0,
+        unit_cost: parseFloat(f.unit_cost) || 0,
+        source: "manual",
+    };
+    if (!body.name || body.qty <= 0) return setStatus("Need a name and a positive qty.");
+    try {
+        await api.addSpending(body);
+        setStatus(`Logged $${(body.qty * body.unit_cost).toFixed(2)} for ${body.name}.`, "info");
+        renderSpendingPage();
+    } catch (err) { setStatus(err.message); }
+}
+
+async function onDeleteSpending(id) {
+    if (!confirm("Delete this purchase entry?")) return;
+    try {
+        await api.deleteSpending(id);
+        setStatus("Deleted spending entry.", "info");
+        renderSpendingPage();
+    } catch (err) { setStatus(err.message); }
 }
 
 // ===========================================================================
@@ -1016,10 +1235,20 @@ async function onSetStock(name, kind, current, target) {
     } catch (err) { setStatus(err.message); }
 }
 
-async function onStockAdd(name, amount) {
+async function onStockAdd(name, amount, purchase) {
     try {
         await api.addStock({ name, amount, kind: "food" });
-        setStatus(`Stocked ${amount} × ${name}.`, "info");
+        let msg = `Stocked ${fmtQty(amount)} × ${name}.`;
+        if (purchase && purchase.qty > 0) {
+            try {
+                await api.logStockPurchase({ name, qty: purchase.qty, unit_cost: purchase.unit_cost });
+                const total = purchase.qty * purchase.unit_cost;
+                msg += ` Logged $${total.toFixed(2)} purchase.`;
+            } catch (err) {
+                msg += ` (purchase log failed: ${err.message})`;
+            }
+        }
+        setStatus(msg, "info");
         await loadAll();
         renderCurrentRoute();
     } catch (err) { setStatus(err.message); }
@@ -1074,10 +1303,20 @@ async function onAddToList(name, amount) {
     } catch (err) { setStatus(err.message); }
 }
 
-async function onCheckOff(name, toInventory) {
+async function onCheckOff(name, toInventory, purchase) {
     try {
         const res = await api.checkOffList({ name, to_inventory: toInventory });
-        setStatus(`Checked off "${name}" (+${res.moved} to inventory).`, "info");
+        let msg = `Checked off "${name}" (+${res.moved} to inventory).`;
+        if (purchase && purchase.qty > 0) {
+            try {
+                await api.logCheckoffPurchase({ name, qty: purchase.qty, unit_cost: purchase.unit_cost });
+                const total = purchase.qty * purchase.unit_cost;
+                msg += ` Logged $${total.toFixed(2)} purchase.`;
+            } catch (err) {
+                msg += ` (purchase log failed: ${err.message})`;
+            }
+        }
+        setStatus(msg, "info");
         await loadAll();
         renderCurrentRoute();
     } catch (err) { setStatus(err.message); }
@@ -1097,7 +1336,7 @@ async function onClearList() {
 // router
 // ===========================================================================
 
-const VIEWS = ["view-dashboard", "view-food", "view-meal", "view-list", "view-inventory"];
+const VIEWS = ["view-dashboard", "view-food", "view-meal", "view-list", "view-inventory", "view-spending"];
 
 function parseRoute() {
     const hash = location.hash || "#/";
@@ -1155,6 +1394,12 @@ function renderCurrentRoute() {
         showView("view-inventory");
         setActiveNav("/inventory");
         renderInventoryPage();
+        return;
+    }
+    if (parts[0] === "spending") {
+        showView("view-spending");
+        setActiveNav("/spending");
+        renderSpendingPage();
         return;
     }
     // unknown route -> dashboard
