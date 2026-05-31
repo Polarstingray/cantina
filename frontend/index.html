@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cantina</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script type="module" src="js/app.js"></script>
+</head>
+<body>
+    <header>
+        <h1>Cantina</h1>
+        <p class="tagline">household grocery &amp; meal tracker</p>
+    </header>
+
+    <div id="status" class="status" hidden></div>
+
+    <main>
+        <!-- CATALOG: foods -->
+        <section id="foods-section">
+            <div class="section-head">
+                <h2>Foods</h2>
+                <button type="button" class="toggle" data-target="add-food-form">+ add food</button>
+            </div>
+
+            <form id="add-food-form" class="form" hidden>
+                <div class="form-grid">
+                    <label>Name<input name="name" required></label>
+                    <label>Cost ($)<input name="cost" type="number" step="0.01" min="0" value="0"></label>
+                    <label>Calories<input name="cals" type="number" min="0" value="0"></label>
+                    <label>Carbs (g)<input name="carbs" type="number" step="0.1" min="0" value="0"></label>
+                    <label>Protein (g)<input name="protein" type="number" step="0.1" min="0" value="0"></label>
+                    <label>Fat (g)<input name="fat" type="number" step="0.1" min="0" value="0"></label>
+                    <label class="wide">Stores (comma separated)<input name="stores" placeholder="cub, target"></label>
+                    <label class="wide">Description<input name="desc"></label>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="ghost cancel" data-target="add-food-form">Cancel</button>
+                    <button type="submit">Add food</button>
+                </div>
+            </form>
+
+            <div id="foods" class="cards"></div>
+        </section>
+
+        <!-- CATALOG: meals -->
+        <section id="meals-section">
+            <div class="section-head">
+                <h2>Meals</h2>
+                <button type="button" class="toggle" data-target="add-meal-form">+ add meal</button>
+            </div>
+
+            <form id="add-meal-form" class="form" hidden>
+                <div class="form-grid">
+                    <label class="wide">Name<input name="name" required></label>
+                    <label class="wide">Description<input name="desc"></label>
+                </div>
+                <div class="ingredients">
+                    <div class="ingredients-head">
+                        <span>Ingredients</span>
+                        <button type="button" id="add-ingredient">+ ingredient</button>
+                    </div>
+                    <div id="ingredient-rows"></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="ghost cancel" data-target="add-meal-form">Cancel</button>
+                    <button type="submit">Add meal</button>
+                </div>
+            </form>
+
+            <div id="meals" class="cards"></div>
+        </section>
+
+        <!-- INVENTORY -->
+        <section id="inventory-section">
+            <div class="section-head">
+                <h2>Inventory</h2>
+                <button type="button" class="toggle" data-target="add-stock-form">+ stock item</button>
+            </div>
+
+            <form id="add-stock-form" class="form" hidden>
+                <div class="form-grid">
+                    <label>Kind
+                        <select name="kind">
+                            <option value="food">food</option>
+                            <option value="meal">meal</option>
+                        </select>
+                    </label>
+                    <label>Item
+                        <select name="name" id="stock-name"></select>
+                    </label>
+                    <label>Amount<input name="amount" type="number" min="1" value="1"></label>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="ghost cancel" data-target="add-stock-form">Cancel</button>
+                    <button type="submit">Add to inventory</button>
+                </div>
+            </form>
+
+            <div id="inventory"></div>
+        </section>
+
+        <!-- MENU -->
+        <section id="menu-section">
+            <div class="section-head">
+                <h2>Menu</h2>
+                <span class="muted">what you can make right now</span>
+            </div>
+            <div id="menu"></div>
+        </section>
+    </main>
+</body>
+</html>

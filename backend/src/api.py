@@ -8,38 +8,63 @@ api.py
             (--host 0.0.0.0 makes it reachable from other devices on the LAN)
 '''
 
+import os
+from typing import Annotated, Literal
+
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, field_validator
 
 from foods import Food, Meal
-from grocery import read_json_from_bin, FOOD_AND_MEALS, jsons_to_objects, add_to_bin
+from grocery import read_json_from_bin, FOOD_AND_MEALS, jsons_to_objects, add_to_bin, remove_from_bin
 import inventory
 import menu
 
 app = FastAPI(title="Cantina")
 
 
-# --- request bodies (rough) ------------------------------------------------
+# --- request bodies --------------------------------------------------------
+
+# Names: 1..80 chars, stripped, no path separators or null bytes.
+SafeName = Annotated[str, Field(min_length=1, max_length=80, strip_whitespace=True)]
+
+def _check_name(value: str) -> str :
+    if "/" in value or "\\" in value or "\x00" in value :
+        raise ValueError("name may not contain '/', '\\\\' or null bytes")
+    return value
+
 
 class FoodIn(BaseModel) :
-    name: str
-    stores: list[str] = []
-    cost: float = 0.0
-    cals: int = 0
-    carbs: float = 0.0
-    protein: float = 0.0
-    fat: float = 0.0
-    desc: str = ""
+    name: SafeName
+    stores: list[Annotated[str, Field(max_length=80)]] = []
+    cost: float = Field(0.0, ge=0)
+    cals: int = Field(0, ge=0)
+    carbs: float = Field(0.0, ge=0)
+    protein: float = Field(0.0, ge=0)
+    fat: float = Field(0.0, ge=0)
+    desc: Annotated[str, Field(max_length=500)] = ""
+
+    @field_validator("name")
+    @classmethod
+    def _v_name(cls, v) : return _check_name(v)
 
 class MealIn(BaseModel) :
-    name: str
-    foods: dict[str, int]      # {food_name: amount}
-    desc: str = ""
+    name: SafeName
+    foods: dict[SafeName, Annotated[int, Field(ge=1)]]   # {food_name: amount}
+    desc: Annotated[str, Field(max_length=500)] = ""
+
+    @field_validator("name")
+    @classmethod
+    def _v_name(cls, v) : return _check_name(v)
 
 class StockIn(BaseModel) :
-    name: str
-    amount: int = 1
-    kind: str = "food"         # "food" or "meal"
+    name: SafeName
+    amount: Annotated[int, Field(ge=1)] = 1
+    kind: Literal["food", "meal"] = "food"
+
+    @field_validator("name")
+    @classmethod
+    def _v_name(cls, v) : return _check_name(v)
 
 
 # small helper: load the catalog as ([Food], [Meal])
@@ -56,8 +81,11 @@ def list_foods() :
 
 @app.get("/meals")
 def list_meals() :
-    _, meals = _catalog()
-    return [m.to_json() for m in meals]
+    # Return raw catalog rows (not rebuilt Meal objects) so the frontend can
+    # see ingredient names that no longer exist in the food catalog and warn
+    # the user, rather than silently dropping them like Meal.create does.
+    return [obj for obj in read_json_from_bin(FOOD_AND_MEALS)
+            if obj.get("type") == "meal"]
 
 @app.post("/foods")
 def add_food(food: FoodIn) :
@@ -78,9 +106,19 @@ def add_meal(meal: MealIn) :
     add_to_bin(m.to_json())
     return {"ok" : True}
 
-# TODO: DELETE /foods/{name} and /meals/{name} once catalog removal
-# (the commented-out rm_from_db in grocery.py) is implemented. The handler
-# should also call inventory.drop(name, kind) to clear orphaned stock.
+@app.delete("/foods/{name}")
+def delete_food(name: str) :
+    if remove_from_bin(name, kind="food") != 0 :
+        raise HTTPException(status_code=404, detail=f"unknown food '{name}'")
+    inventory.drop(name, kind="food")
+    return {"ok" : True}
+
+@app.delete("/meals/{name}")
+def delete_meal(name: str) :
+    if remove_from_bin(name, kind="meal") != 0 :
+        raise HTTPException(status_code=404, detail=f"unknown meal '{name}'")
+    inventory.drop(name, kind="meal")
+    return {"ok" : True}
 
 
 # --- inventory -------------------------------------------------------------
@@ -118,3 +156,10 @@ def make_meal(meal_name: str) :
     if menu.make_meal(target) != 0 :
         raise HTTPException(status_code=400, detail="not enough ingredients on hand")
     return {"ok" : True}
+
+
+# --- static frontend -------------------------------------------------------
+# Mount LAST so the API routes above still match first. html=True serves
+# index.html at "/" and any unknown path falls back to it as well.
+FRONTEND_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
+app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

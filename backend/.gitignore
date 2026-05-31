@@ -1,4 +1,8 @@
 *.pkl
 *db
 *.bin
+*.bin.bak.*
 *.tmp
+*venv
+__pycache__/
+*.pyc

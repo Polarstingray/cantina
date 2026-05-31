@@ -8,9 +8,42 @@ grocery.py
 
 import os
 import json
+import shutil
+import threading
 from foods import *
 FOOD_AND_MEALS=os.path.join(os.path.dirname(__file__), "data.bin")
-INVENTORY=os.path.join(os.path.dirname(__file__), "inventory.bin")
+
+# One lock per file path, shared by read + write so we never observe a torn
+# state from another worker thread. The single-uvicorn-worker assumption
+# (one process, threadpool for sync handlers) makes a threading.Lock enough --
+# do NOT scale to --workers >1 without switching to fcntl.flock or sqlite.
+_LOCKS: dict[str, threading.Lock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+def _lock_for(path: str) -> threading.Lock :
+    with _LOCKS_GUARD :
+        lock = _LOCKS.get(path)
+        if lock is None :
+            lock = threading.Lock()
+            _LOCKS[path] = lock
+        return lock
+
+# Keep 3 rotated copies (.bak.0 newest, .bak.2 oldest) so a corrupt write or
+# a fat-fingered delete can be recovered by hand. Called from within the
+# write lock so no torn state ever ends up in a backup.
+def _rotate_backup(db: str, depth: int = 3) :
+    if not os.path.exists(db) :
+        return
+    for i in range(depth - 1, 0, -1) :
+        src = f"{db}.bak.{i - 1}"
+        dst = f"{db}.bak.{i}"
+        if os.path.exists(src) :
+            os.replace(src, dst)
+    try :
+        shutil.copyfile(db, f"{db}.bak.0")
+    except OSError :
+        pass
+
 
 # Food and Meal database
 # A single binary file holding a json list of serialized food and meal objects.
@@ -20,16 +53,25 @@ INVENTORY=os.path.join(os.path.dirname(__file__), "inventory.bin")
 
 def write_json_to_bin(json_list, db=FOOD_AND_MEALS) :
     json_str = json.dumps(json_list)
-    with open(db, "wb") as f:
-        f.write(json_str.encode('utf-8'))
+    payload = json_str.encode('utf-8')
+    tmp = db + ".tmp"
+    with _lock_for(db) :
+        _rotate_backup(db)
+        # Write to a sibling tmp file, fsync, then atomically replace.
+        with open(tmp, "wb") as f :
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, db)
 
 
 def read_json_from_bin(db=FOOD_AND_MEALS) :
-    try :
-        with open(db, "rb") as f :
-            binary = f.read()
-    except FileNotFoundError :
-        return []
+    with _lock_for(db) :
+        try :
+            with open(db, "rb") as f :
+                binary = f.read()
+        except FileNotFoundError :
+            return []
     if not binary :
         return []
     return json.loads(binary.decode('utf-8'))
@@ -84,8 +126,22 @@ def add_to_bin(item, db=FOOD_AND_MEALS) :
     old_db = read_json_from_bin()
     old_db.append(item)
     new_db = objects_to_jsons(jsons_to_objects(old_db)) # ensures no duplicates
-    write_json_to_bin(new_db, db)        
+    write_json_to_bin(new_db, db)
     return
+
+
+# Remove a food or meal from the catalog by name. `kind` is "food" or "meal".
+# Returns 0 on success, -1 if no matching entry was found. Inventory cleanup
+# (dropping orphaned on-hand rows) is the caller's responsibility -- the API
+# layer pairs this with inventory.drop(name, kind).
+def remove_from_bin(name, kind="food", db=FOOD_AND_MEALS) :
+    data = read_json_from_bin(db)
+    new_data = [obj for obj in data
+                if not (obj.get("type") == kind and obj.get("name") == name)]
+    if len(new_data) == len(data) :
+        return -1
+    write_json_to_bin(new_data, db)
+    return 0
 
 
         

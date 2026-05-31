@@ -1,0 +1,269 @@
+/*
+ * styles.css — simple, readable LAN-app styling. Neutral palette, single
+ * accent for buttons, card grids for foods/meals, comfortable tap targets.
+ */
+
+:root {
+    --bg: #f7f6f2;
+    --surface: #ffffff;
+    --border: #e2e0d8;
+    --text: #1f2024;
+    --muted: #6a6d75;
+    --accent: #3a7d5c;
+    --accent-hover: #2f664a;
+    --danger: #b3493a;
+    --radius: 8px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    line-height: 1.5;
+    background: var(--bg);
+    color: var(--text);
+}
+
+header {
+    padding: 1.25rem 1.5rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+}
+header h1 { margin: 0; font-size: 1.6rem; }
+header .tagline { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.95rem; }
+
+main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+}
+
+.section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+.section-head h2 { margin: 0; font-size: 1.2rem; }
+.muted { color: var(--muted); font-size: 0.9rem; }
+
+/* status banner */
+.status {
+    max-width: 1100px;
+    margin: 0.5rem auto 0;
+    padding: 0.6rem 0.9rem;
+    border-radius: var(--radius);
+    background: #fff3ee;
+    border: 1px solid #f0c2b0;
+    color: var(--danger);
+    font-size: 0.95rem;
+}
+.status.info {
+    background: #eef4ee;
+    border-color: #c8dbcc;
+    color: var(--accent-hover);
+}
+
+/* buttons */
+button {
+    font: inherit;
+    cursor: pointer;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    padding: 0.45rem 0.85rem;
+    min-height: 36px;
+}
+button:hover:not(:disabled) { background: var(--accent-hover); }
+button:disabled { background: #b8bcb4; cursor: not-allowed; }
+button.toggle, button.ghost {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 0.3rem 0.7rem;
+}
+button.toggle:hover:not(:disabled), button.ghost:hover:not(:disabled) {
+    background: rgba(58, 125, 92, 0.08);
+}
+button.icon {
+    min-width: 36px;
+    padding: 0.25rem 0.55rem;
+    font-weight: 600;
+}
+button.danger { background: var(--danger); }
+button.danger:hover:not(:disabled) { background: #913524; }
+
+/* forms */
+.form {
+    background: #fbfaf6;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.9rem;
+    margin-bottom: 1rem;
+}
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.6rem 0.8rem;
+}
+.form-grid label.wide { grid-column: 1 / -1; }
+.form-grid label {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.85rem;
+    color: var(--muted);
+    gap: 0.2rem;
+}
+.form input, .form select {
+    font: inherit;
+    color: var(--text);
+    padding: 0.4rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    min-height: 36px;
+}
+.form-actions {
+    margin-top: 0.8rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.warn-chip {
+    margin-top: 0.3rem;
+    font-size: 0.78rem;
+    color: var(--danger);
+    background: #fff3ee;
+    border: 1px solid #f0c2b0;
+    border-radius: 6px;
+    padding: 0.2rem 0.5rem;
+}
+.card ul.ingredients-list li.missing {
+    color: var(--danger);
+    text-decoration: line-through;
+}
+
+.ingredients { margin-top: 0.8rem; }
+.ingredients-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.4rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+}
+.ingredient-row {
+    display: grid;
+    grid-template-columns: 1fr 90px 36px;
+    gap: 0.4rem;
+    margin-bottom: 0.35rem;
+}
+
+/* cards */
+.cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+}
+.card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+.card .card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.4rem;
+}
+.card .name { font-weight: 600; font-size: 1.02rem; }
+button.danger-text {
+    color: var(--danger);
+    border-color: #e6c3bb;
+}
+button.danger-text:hover:not(:disabled) {
+    background: rgba(179, 73, 58, 0.08);
+}
+.card .desc { color: var(--muted); font-size: 0.88rem; }
+.card .cost { font-weight: 600; color: var(--accent-hover); }
+.card .macros { font-size: 0.85rem; color: var(--muted); }
+.card .stores {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.2rem;
+}
+.card .chip {
+    background: #ecebe4;
+    border-radius: 999px;
+    padding: 0.05rem 0.55rem;
+    font-size: 0.78rem;
+    color: var(--text);
+}
+.card ul.ingredients-list {
+    margin: 0.25rem 0 0;
+    padding-left: 1.1rem;
+    font-size: 0.88rem;
+    color: var(--text);
+}
+
+/* inventory rows */
+.inv-group { margin-bottom: 0.9rem; }
+.inv-group h3 { margin: 0 0 0.4rem; font-size: 1rem; color: var(--muted); font-weight: 600; }
+.inv-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 0.35rem;
+    background: #fff;
+}
+.inv-row .qty {
+    min-width: 2.2rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+.inv-row .controls { display: flex; align-items: center; gap: 0.4rem; }
+
+/* menu rows */
+.menu-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 0.4rem;
+    background: #fff;
+}
+.menu-row .count { color: var(--muted); font-size: 0.9rem; }
+.menu-row .count strong { color: var(--text); }
+
+.empty { color: var(--muted); font-style: italic; padding: 0.5rem 0; }
+
+@media (max-width: 520px) {
+    .cards { grid-template-columns: 1fr; }
+    .section-head { flex-wrap: wrap; }
+    main { padding: 0.6rem; }
+}

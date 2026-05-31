@@ -24,16 +24,20 @@ class Food:
         if food_json.get("type") != "food" or not food_json.get("name"):
             return None
 
-        # print(food_json.get("macros"))
-        macros = [int(food_json.get("macros")[0]), 
-                  float(food_json.get("macros")[1]), 
-                  float(food_json.get("macros")[2]), 
-                  float(food_json.get("macros")[3])]
-        
+        # Pad short/missing macros to 4 entries; tolerate non-numeric strings.
+        raw = food_json.get("macros") or []
+        def _num(x, cast) :
+            try : return cast(x)
+            except (TypeError, ValueError) : return cast(0)
+        padded = (list(raw) + [0, 0, 0, 0])[:4]
+        macros = [_num(padded[0], int),
+                  _num(padded[1], float),
+                  _num(padded[2], float),
+                  _num(padded[3], float)]
 
         return Food(food_json.get("name"),
                     food_json.get("stores"),
-                    float(food_json.get("cost")),
+                    _num(food_json.get("cost"), float),
                     macros[0], macros[1], macros[2], macros[3],
                     food_json.get("desc"),
                     food_json.get("pic"))
