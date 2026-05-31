@@ -23,6 +23,12 @@ const state = {
     list: {},
 };
 
+// One-shot flag: when a scan-to-stock lands on an unknown barcode, we route
+// the user through the add-food prefill flow. After they Save the new food,
+// this flag triggers a follow-up `addStock(name, 1, "food")` so the scanning
+// gesture ends up actually stocking the thing. Cleared after the follow-up.
+let pendingStockOnSave = false;
+
 // ===========================================================================
 // helpers
 // ===========================================================================
@@ -285,12 +291,18 @@ async function onScanBarcode() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         return setStatus("This page needs HTTPS to access the camera. Type the barcode manually and hit Lookup.");
     }
-    await startScannerModal();
+    await startScannerModal((code) => {
+        const form = $("add-food-form");
+        form.hidden = false;
+        form.elements.barcode.value = code;
+        return onLookupBarcode();
+    });
 }
 
 // Camera modal: open a small overlay with the video feed; BarcodeDetector
-// polls every 250ms; first match fills the barcode field and triggers lookup.
-async function startScannerModal() {
+// polls every 250ms; first match closes the modal and hands the code string
+// to `onCode`. Callers decide what to do with the code.
+async function startScannerModal(onCode) {
     let stream;
     try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -331,15 +343,97 @@ async function startScannerModal() {
             if (codes && codes.length) {
                 const code = codes[0].rawValue;
                 stop();
-                const form = $("add-food-form");
-                form.hidden = false;
-                form.elements.barcode.value = code;
-                return onLookupBarcode();
+                return onCode(code);
             }
         } catch { /* keep polling */ }
         setTimeout(tick, 250);
     };
     setTimeout(tick, 500);    // small delay so the video has a frame
+}
+
+// Scan-to-stock entry point used by the inventory page's Scan button.
+async function onScanToStock() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return setStatus("This page needs HTTPS to access the camera. Type the name in the Stock form below instead.");
+    }
+    await startScannerModal(async (code) => {
+        // Match by stored barcode on existing catalog foods first.
+        const match = state.foods.find((f) => (f.barcode || "") === code);
+        if (match) {
+            openStockPanel(match.name);
+            setStatus(`Scanned "${match.name}" — pick amount and confirm.`, "info");
+            return;
+        }
+        // Not in catalog: route to add-food prefill, then auto-stock 1 on save.
+        setStatus(`Scanned unknown barcode ${code} — looking up…`, "info");
+        try {
+            const result = await api.lookupBarcode(code);
+            // We need to land on the dashboard for the add-food form to be in the DOM.
+            location.hash = "#/";
+            await new Promise((r) => setTimeout(r, 50));
+            const form = $("add-food-form");
+            form.hidden = false;
+            form.elements.barcode.value = code;
+            prefillAddFoodForm(result);
+            pendingStockOnSave = true;
+            setStatus(`Scanned ${code}: review and Save — it'll be stocked automatically.`, "info");
+        } catch (err) {
+            // Unknown to OpenFoodFacts too -- give them a starting point.
+            location.hash = "#/";
+            await new Promise((r) => setTimeout(r, 50));
+            const form = $("add-food-form");
+            form.hidden = false;
+            form.elements.barcode.value = code;
+            pendingStockOnSave = true;
+            setStatus(`Scanned ${code}: not in food database. Fill the name + macros, Save, and it'll be stocked.`, "info");
+        }
+    });
+}
+
+// Opens the inline Stock-it panel above the inventory rows for `name`.
+// Used by both Scan-to-stock and (later) any other "I want to stock this
+// specific thing" affordance. Idempotent: re-opens cleanly if called twice.
+function openStockPanel(name) {
+    const view = $("view-inventory");
+    if (!view || view.hidden) {
+        // Nav to inventory page first; the panel is rendered into a slot there.
+        location.hash = "#/inventory";
+        setTimeout(() => openStockPanel(name), 50);
+        return;
+    }
+    let slot = $("scan-stock-slot");
+    if (!slot) return;
+    slot.innerHTML = "";
+
+    let amtInput;
+    const form = el("form", { class: "form stock-panel",
+        onsubmit: async (e) => {
+            e.preventDefault();
+            const amt = parseFloat(amtInput.value) || 0;
+            if (amt <= 0) return setStatus("Amount must be positive.");
+            try {
+                await api.addStock({ name, amount: amt, kind: "food" });
+                setStatus(`Stocked ${fmtQty(amt)} × ${name}.`, "info");
+                slot.innerHTML = "";
+                await loadAll();
+            } catch (err) { setStatus(err.message); }
+        } }, [
+        el("div", { class: "detail-head" }, [
+            el("h3", { textContent: `Stock "${name}"` }),
+            el("button", { type: "button", class: "ghost",
+                textContent: "Cancel", onclick: () => { slot.innerHTML = ""; } }),
+        ]),
+        el("div", { class: "form-grid" }, [
+            el("label", {}, [document.createTextNode("Amount"),
+                (amtInput = el("input", { type: "number", min: "0.5", step: "0.5", value: "1" }))]),
+        ]),
+        el("div", { class: "form-actions" }, [
+            el("button", { type: "submit", textContent: "Confirm" }),
+        ]),
+    ]);
+    slot.appendChild(form);
+    amtInput.focus();
+    amtInput.select();
 }
 
 async function onAddListFromDashboard(e) {
@@ -723,8 +817,15 @@ function renderInventoryPage() {
         ]),
     ]);
 
+    const head = [el("h2", { textContent: "Inventory" })];
+    if ("BarcodeDetector" in window) {
+        head.push(el("button", { class: "ghost", textContent: "Scan to stock",
+            onclick: onScanToStock }));
+    }
     view.appendChild(el("section", { class: "detail" }, [
-        el("h2", { textContent: "Inventory" }),
+        el("div", { class: "detail-head" }, head),
+        // Slot the Scan-to-Stock panel mounts into when it has something to show.
+        el("div", { id: "scan-stock-slot" }),
         el("h3", { textContent: "Stock a new item" }),
         stockForm,
     ]));
@@ -831,7 +932,19 @@ async function onAddFood(e) {
         await api.addFood(body);
         e.target.reset();
         e.target.hidden = true;
-        setStatus(`Added food "${body.name}".`, "info");
+        // If this Save came from a Scan-to-Stock detour through an unknown
+        // barcode, finish the gesture by stocking 1 of the new food.
+        if (pendingStockOnSave) {
+            pendingStockOnSave = false;
+            try {
+                await api.addStock({ name: body.name, amount: 1, kind: "food" });
+                setStatus(`Added food "${body.name}" and stocked 1.`, "info");
+            } catch (err) {
+                setStatus(`Added food "${body.name}", but stocking failed: ${err.message}`);
+            }
+        } else {
+            setStatus(`Added food "${body.name}".`, "info");
+        }
         await loadAll();
     } catch (err) { setStatus(err.message); }
 }

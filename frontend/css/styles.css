@@ -511,6 +511,12 @@ button.danger-text:hover:not(:disabled) {
     border-radius: 6px;
 }
 
+/* --- scan-to-stock inline panel -------------------------------------- */
+.stock-panel {
+    border-left: 4px solid var(--accent);
+    background: #f4fbf6;
+}
+
 /* --- responsive ------------------------------------------------------- */
 @media (max-width: 520px) {
     .cards { grid-template-columns: 1fr; }
