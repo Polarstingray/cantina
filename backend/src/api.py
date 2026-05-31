@@ -19,6 +19,7 @@ from foods import Food, Meal
 from grocery import read_json_from_bin, FOOD_AND_MEALS, jsons_to_objects, add_to_bin, remove_from_bin
 import inventory
 import menu
+import shopping
 
 app = FastAPI(title="Cantina")
 
@@ -66,6 +67,22 @@ class StockIn(BaseModel) :
     @classmethod
     def _v_name(cls, v) : return _check_name(v)
 
+class ListItemIn(BaseModel) :
+    name: SafeName
+    amount: Annotated[int, Field(ge=1)] = 1
+
+    @field_validator("name")
+    @classmethod
+    def _v_name(cls, v) : return _check_name(v)
+
+class CheckOffIn(BaseModel) :
+    name: SafeName
+    to_inventory: Annotated[int, Field(ge=0)] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _v_name(cls, v) : return _check_name(v)
+
 
 # small helper: load the catalog as ([Food], [Meal])
 def _catalog() :
@@ -93,6 +110,24 @@ def add_food(food: FoodIn) :
              food.carbs, food.protein, food.fat, food.desc)
     add_to_bin(f.to_json())
     return {"ok" : True}
+
+# PUT is semantically "replace this named food" -- add_to_bin already
+# deduplicates by name, so the implementation is the same as POST. Kept
+# separate so the UI can express edit-vs-create intent.
+@app.put("/foods/{name}")
+def update_food(name: str, food: FoodIn) :
+    if name != food.name :
+        raise HTTPException(status_code=400, detail="path name and body name must match")
+    f = Food(food.name, food.stores, food.cost, food.cals,
+             food.carbs, food.protein, food.fat, food.desc)
+    add_to_bin(f.to_json())
+    return {"ok" : True}
+
+@app.get("/catalog/uses/{food_name}")
+def food_uses(food_name: str) :
+    # Meals (by name) that reference this food in their ingredient map.
+    return [obj["name"] for obj in read_json_from_bin(FOOD_AND_MEALS)
+            if obj.get("type") == "meal" and food_name in (obj.get("foods") or {})]
 
 @app.post("/meals")
 def add_meal(meal: MealIn) :
@@ -129,6 +164,10 @@ def get_inventory() :
 
 @app.post("/inventory/add")
 def add_stock(stock: StockIn) :
+    # Stocking an unknown food creates a minimal catalog entry so the rest of
+    # the app sees one name system (matches the grocery-list add behavior).
+    if stock.kind == "food" :
+        shopping.ensure_in_catalog(stock.name)
     if inventory.add_stock(stock.name, stock.amount, stock.kind) != 0 :
         raise HTTPException(status_code=400, detail="invalid amount")
     return {"ok" : True}
@@ -155,6 +194,37 @@ def make_meal(meal_name: str) :
         raise HTTPException(status_code=404, detail=f"unknown meal '{meal_name}'")
     if menu.make_meal(target) != 0 :
         raise HTTPException(status_code=400, detail="not enough ingredients on hand")
+    return {"ok" : True}
+
+
+# --- grocery / shopping list ----------------------------------------------
+
+@app.get("/list")
+def get_list() :
+    return shopping.read_list()
+
+@app.post("/list/add")
+def list_add(item: ListItemIn) :
+    if shopping.add(item.name, item.amount) != 0 :
+        raise HTTPException(status_code=400, detail="invalid amount")
+    return {"ok" : True}
+
+@app.post("/list/remove")
+def list_remove(item: ListItemIn) :
+    if shopping.remove(item.name, item.amount) != 0 :
+        raise HTTPException(status_code=400, detail="not enough on the list")
+    return {"ok" : True}
+
+@app.post("/list/check")
+def list_check(body: CheckOffIn) :
+    moved = shopping.check_off(body.name, body.to_inventory)
+    if moved < 0 :
+        raise HTTPException(status_code=404, detail=f"'{body.name}' not on the list")
+    return {"moved" : moved}
+
+@app.post("/list/clear")
+def list_clear() :
+    shopping.clear()
     return {"ok" : True}
 
 

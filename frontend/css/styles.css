@@ -26,12 +26,39 @@ body {
 }
 
 header {
-    padding: 1.25rem 1.5rem;
+    padding: 1rem 1.5rem;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
 }
+.header-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
 header h1 { margin: 0; font-size: 1.6rem; }
+header h1 a { color: inherit; text-decoration: none; }
 header .tagline { margin: 0.15rem 0 0; color: var(--muted); font-size: 0.95rem; }
+
+.topnav {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+.topnav a {
+    color: var(--accent);
+    text-decoration: none;
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    font-size: 0.95rem;
+}
+.topnav a:hover { background: rgba(58, 125, 92, 0.08); }
+.topnav a.active {
+    border-color: var(--accent);
+    background: rgba(58, 125, 92, 0.08);
+}
 
 main {
     max-width: 1100px;
@@ -262,8 +289,154 @@ button.danger-text:hover:not(:disabled) {
 
 .empty { color: var(--muted); font-style: italic; padding: 0.5rem 0; }
 
+/* --- clickable cards (dashboard) -------------------------------------- */
+.card-link {
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.12s ease;
+}
+.card-link:hover { border-color: var(--accent); }
+
+/* --- detail-page styling ---------------------------------------------- */
+.view section.detail {
+    /* same look as the dashboard sections */
+}
+.back-link {
+    display: inline-block;
+    margin: 0 0 0.75rem;
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+.back-link:hover { text-decoration: underline; }
+
+.detail-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+.detail-head h2 { margin: 0; font-size: 1.4rem; }
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.4rem 1rem;
+    margin: 0.4rem 0;
+    font-size: 0.95rem;
+}
+
+.stores {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.4rem;
+}
+.detail .chip {
+    background: #ecebe4;
+    border-radius: 999px;
+    padding: 0.05rem 0.55rem;
+    font-size: 0.78rem;
+    color: var(--text);
+}
+
+.chip-link {
+    display: inline-block;
+    background: rgba(58, 125, 92, 0.08);
+    color: var(--accent);
+    border-radius: 999px;
+    padding: 0.1rem 0.7rem;
+    text-decoration: none;
+    font-size: 0.85rem;
+    margin: 0.15rem 0.2rem 0.15rem 0;
+}
+.chip-link:hover { background: rgba(58, 125, 92, 0.16); }
+
+.inline-form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.inline-form label { display: flex; align-items: center; gap: 0.4rem; }
+.inline-form input { max-width: 80px; }
+
+/* --- grocery list page ------------------------------------------------ */
+.list-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1rem;
+}
+@media (max-width: 760px) {
+    .list-grid { grid-template-columns: 1fr; }
+}
+
+.list-rows { display: flex; flex-direction: column; }
+
+.list-row {
+    display: grid;
+    grid-template-columns: 1fr 50px auto;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 0.35rem;
+    background: #fff;
+}
+.list-row .list-name {
+    color: var(--text);
+    text-decoration: none;
+    font-weight: 600;
+}
+.list-row .list-name:hover { text-decoration: underline; }
+.list-row .qty {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+}
+.check-btn {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+.check-form {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+    margin-top: 0.4rem;
+}
+.check-form input { max-width: 70px; }
+
+.peek h3 { color: var(--muted); font-size: 0.95rem; margin-top: 0; }
+
+/* --- inventory page "set" inline control ----------------------------- */
+.inline-set {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-left: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+.inline-set input {
+    width: 60px;
+    font: inherit;
+    padding: 0.25rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+/* --- responsive ------------------------------------------------------- */
 @media (max-width: 520px) {
     .cards { grid-template-columns: 1fr; }
     .section-head { flex-wrap: wrap; }
     main { padding: 0.6rem; }
+    .detail-head { flex-wrap: wrap; }
+    .inv-row { flex-wrap: wrap; }
 }

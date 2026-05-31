@@ -9,14 +9,21 @@
 </head>
 <body>
     <header>
-        <h1>Cantina</h1>
+        <div class="header-top">
+            <h1><a href="#/">Cantina</a></h1>
+            <nav class="topnav">
+                <a href="#/" data-route="/">Dashboard</a>
+                <a href="#/list" data-route="/list">Grocery list</a>
+                <a href="#/inventory" data-route="/inventory">Inventory</a>
+            </nav>
+        </div>
         <p class="tagline">household grocery &amp; meal tracker</p>
     </header>
 
     <div id="status" class="status" hidden></div>
 
-    <main>
-        <!-- CATALOG: foods -->
+    <!-- DASHBOARD ============================================================ -->
+    <main id="view-dashboard" class="view">
         <section id="foods-section">
             <div class="section-head">
                 <h2>Foods</h2>
@@ -43,7 +50,6 @@
             <div id="foods" class="cards"></div>
         </section>
 
-        <!-- CATALOG: meals -->
         <section id="meals-section">
             <div class="section-head">
                 <h2>Meals</h2>
@@ -71,36 +77,14 @@
             <div id="meals" class="cards"></div>
         </section>
 
-        <!-- INVENTORY -->
         <section id="inventory-section">
             <div class="section-head">
                 <h2>Inventory</h2>
-                <button type="button" class="toggle" data-target="add-stock-form">+ stock item</button>
+                <a class="muted" href="#/inventory">full inventory page →</a>
             </div>
-
-            <form id="add-stock-form" class="form" hidden>
-                <div class="form-grid">
-                    <label>Kind
-                        <select name="kind">
-                            <option value="food">food</option>
-                            <option value="meal">meal</option>
-                        </select>
-                    </label>
-                    <label>Item
-                        <select name="name" id="stock-name"></select>
-                    </label>
-                    <label>Amount<input name="amount" type="number" min="1" value="1"></label>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="ghost cancel" data-target="add-stock-form">Cancel</button>
-                    <button type="submit">Add to inventory</button>
-                </div>
-            </form>
-
             <div id="inventory"></div>
         </section>
 
-        <!-- MENU -->
         <section id="menu-section">
             <div class="section-head">
                 <h2>Menu</h2>
@@ -109,5 +93,11 @@
             <div id="menu"></div>
         </section>
     </main>
+
+    <!-- DETAIL VIEWS ========================================================= -->
+    <main id="view-food" class="view" hidden></main>
+    <main id="view-meal" class="view" hidden></main>
+    <main id="view-list" class="view" hidden></main>
+    <main id="view-inventory" class="view" hidden></main>
 </body>
 </html>

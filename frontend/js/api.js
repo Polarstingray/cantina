@@ -96,3 +96,43 @@ export function getMenu() {
 export function makeMeal(mealName) {
     return request(`/menu/make/${encodeURIComponent(mealName)}`, { method: "POST" });
 }
+
+// PUT /foods/{name} body: same shape as POST /foods. Replaces the named food.
+export function updateFood(food) {
+    return request(`/foods/${encodeURIComponent(food.name)}`,
+        { method: "PUT", body: JSON.stringify(food) });
+}
+
+// GET /catalog/uses/{name} -> ["meal name", ...] meals that reference this food
+export function getFoodUses(name) {
+    return request(`/catalog/uses/${encodeURIComponent(name)}`);
+}
+
+// --- grocery / shopping list ---------------------------------------------
+
+// GET /list -> {name: amount}
+export function getList() {
+    return request("/list");
+}
+
+// POST /list/add  body: {name, amount}  (auto-stubs catalog if unknown name)
+export function addToList(item) {
+    return request("/list/add", { method: "POST", body: JSON.stringify(item) });
+}
+
+// POST /list/remove  body: {name, amount}  (400 if not enough listed)
+export function removeFromList(item) {
+    return request("/list/remove", { method: "POST", body: JSON.stringify(item) });
+}
+
+// POST /list/check  body: {name, to_inventory?}  -> {moved: n}
+// Removes the full listed amount from the list, adds to_inventory (default
+// = full amount, capped) to inventory.
+export function checkOffList(body) {
+    return request("/list/check", { method: "POST", body: JSON.stringify(body) });
+}
+
+// POST /list/clear
+export function clearList() {
+    return request("/list/clear", { method: "POST" });
+}
