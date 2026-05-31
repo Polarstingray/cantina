@@ -1,18 +1,22 @@
 '''
 lookup.py
-    Barcode -> food data via OpenFoodFacts. Returns a dict shaped like
-    FoodIn (so the frontend can prefill the add-food form) -- not a raw
-    OpenFoodFacts payload. No new dependency: stdlib urllib only.
+    Barcode -> food data via OpenFoodFacts, plus a best-effort price
+    lookup against the sibling Open Prices project. Returns a dict
+    shaped like FoodIn (so the frontend can prefill the add-food form)
+    -- not raw payloads. Stdlib urllib only, no new dependency.
 
     A small in-process cache (bounded ~100 entries) avoids hitting the
-    network repeatedly during a single shopping trip.
+    network repeatedly during a single shopping trip. The cached entry
+    holds the merged result (food + price).
 '''
 
 import json
 import urllib.request
 import urllib.error
 
-OFF_URL = "https://world.openfoodfacts.org/api/v2/product/{code}.json"
+OFF_URL    = "https://world.openfoodfacts.org/api/v2/product/{code}.json"
+PRICES_URL = ("https://prices.openfoodfacts.org/api/v1/prices"
+              "?product_code={code}&currency=USD&order_by=-date&size=5")
 TIMEOUT_SECONDS = 5
 USER_AGENT = "cantina/1.0 (https://github.com/local-household)"
 
@@ -66,6 +70,30 @@ def _map_off_to_food(payload: dict) -> dict | None :
     }
 
 
+# Best-effort USD price lookup from Open Prices. Returns the most recent
+# observation's price (float USD) or None on any failure / no observations.
+# Open Prices coverage is sparse, especially for US products -- callers
+# should treat None as "no data", not as an error.
+def _fetch_prices(code: str) -> float | None :
+    req = urllib.request.Request(PRICES_URL.format(code=code),
+                                 headers={"User-Agent": USER_AGENT})
+    try :
+        with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp :
+            data = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, ValueError) :
+        return None
+    items = data.get("items") or []
+    for obs in items :                # already sorted newest first by -date
+        price = obs.get("price")
+        try :
+            p = float(price)
+            if p > 0 :
+                return p
+        except (TypeError, ValueError) :
+            continue
+    return None
+
+
 def lookup(code: str) -> dict | None :
     code = (code or "").strip()
     if not code or not code.isdigit() :
@@ -82,9 +110,16 @@ def lookup(code: str) -> dict | None :
         return None
 
     food = _map_off_to_food(data)
-    if food is not None :
-        if len(_CACHE) >= _CACHE_LIMIT :
-            # cheap eviction: drop the oldest insertion (dicts are insertion-ordered)
-            _CACHE.pop(next(iter(_CACHE)))
-        _CACHE[code] = food
+    if food is None :
+        return None
+
+    # Best-effort price overlay; silent miss leaves cost=0.0.
+    price = _fetch_prices(code)
+    if price is not None :
+        food["cost"] = price
+
+    if len(_CACHE) >= _CACHE_LIMIT :
+        # cheap eviction: drop the oldest insertion (dicts are insertion-ordered)
+        _CACHE.pop(next(iter(_CACHE)))
+    _CACHE[code] = food
     return food
