@@ -8,7 +8,8 @@ meal - *name, list of foods, helper functions for calculating total cost and mac
 '''
 
 class Food:
-    def __init__(self, name, stores=None, cost=0.0, cals=0, carbs=0.0, prot=0.0, fat=0.0, desc="", pic=None):
+    def __init__(self, name, stores=None, cost=0.0, cals=0, carbs=0.0, prot=0.0, fat=0.0, desc="", pic=None,
+                 brand="", serving_size="", barcode="", fiber=0.0, sugar=0.0, sodium=0.0):
         self.name = name
         self.stores = stores
         self.cost = cost
@@ -18,6 +19,14 @@ class Food:
         self.fat=fat
         self.desc = desc
         self.pic = pic
+        # Optional metadata (populated by barcode lookup or manual entry).
+        # Existing catalog rows missing these fields load with empty defaults.
+        self.brand = brand
+        self.serving_size = serving_size
+        self.barcode = barcode
+        self.fiber = fiber
+        self.sugar = sugar
+        self.sodium = sodium      # in mg
 
     @staticmethod
     def create(food_json) :
@@ -40,18 +49,30 @@ class Food:
                     _num(food_json.get("cost"), float),
                     macros[0], macros[1], macros[2], macros[3],
                     food_json.get("desc"),
-                    food_json.get("pic"))
-    
+                    food_json.get("pic"),
+                    brand=food_json.get("brand", "") or "",
+                    serving_size=food_json.get("serving_size", "") or "",
+                    barcode=food_json.get("barcode", "") or "",
+                    fiber=_num(food_json.get("fiber"), float),
+                    sugar=_num(food_json.get("sugar"), float),
+                    sodium=_num(food_json.get("sodium"), float))
+
     # Serialize food as json to be stored in binary and later sqlite db
     def to_json(self) :
         return {
             "type" : "food",
-            "name" : self.name, 
-            "stores" : self.stores, 
-            "cost" : str(self.cost), 
-            "macros" : [str(self.cals), str(self.carbs), str(self.protein), str(self.fat)], 
-            "desc" : self.desc, 
-            "pic" : self.pic
+            "name" : self.name,
+            "stores" : self.stores,
+            "cost" : str(self.cost),
+            "macros" : [str(self.cals), str(self.carbs), str(self.protein), str(self.fat)],
+            "desc" : self.desc,
+            "pic" : self.pic,
+            "brand" : self.brand,
+            "serving_size" : self.serving_size,
+            "barcode" : self.barcode,
+            "fiber" : str(self.fiber),
+            "sugar" : str(self.sugar),
+            "sodium" : str(self.sodium),
         }
 
     def __str__(self) :

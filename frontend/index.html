@@ -31,8 +31,14 @@
             </div>
 
             <form id="add-food-form" class="form" hidden>
+                <div class="scan-row">
+                    <input name="barcode" type="text" inputmode="numeric"
+                        placeholder="barcode (UPC)" autocomplete="off">
+                    <button type="button" id="lookup-btn" class="ghost">Lookup</button>
+                    <button type="button" id="scan-btn" class="ghost">Scan with camera</button>
+                </div>
                 <div class="form-grid">
-                    <label>Name<input name="name" required></label>
+                    <label class="wide">Name<input name="name" required></label>
                     <label>Cost ($)<input name="cost" type="number" step="0.01" min="0" value="0"></label>
                     <label>Calories<input name="cals" type="number" min="0" value="0"></label>
                     <label>Carbs (g)<input name="carbs" type="number" step="0.1" min="0" value="0"></label>
@@ -41,6 +47,16 @@
                     <label class="wide">Stores (comma separated)<input name="stores" placeholder="cub, target"></label>
                     <label class="wide">Description<input name="desc"></label>
                 </div>
+                <details class="disclosure">
+                    <summary>More fields</summary>
+                    <div class="form-grid">
+                        <label class="wide">Brand<input name="brand"></label>
+                        <label class="wide">Serving size<input name="serving_size" placeholder="100g, 1 slice, ..."></label>
+                        <label>Fiber (g)<input name="fiber" type="number" step="0.1" min="0" value="0"></label>
+                        <label>Sugar (g)<input name="sugar" type="number" step="0.1" min="0" value="0"></label>
+                        <label>Sodium (mg)<input name="sodium" type="number" step="0.1" min="0" value="0"></label>
+                    </div>
+                </details>
                 <div class="form-actions">
                     <button type="button" class="ghost cancel" data-target="add-food-form">Cancel</button>
                     <button type="submit">Add food</button>

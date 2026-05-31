@@ -108,6 +108,12 @@ export function getFoodUses(name) {
     return request(`/catalog/uses/${encodeURIComponent(name)}`);
 }
 
+// GET /lookup/barcode/{code} -> FoodIn-shaped {name, brand, cals, ...}
+// 404 if no product is found, 400 if the code isn't a digit string.
+export function lookupBarcode(code) {
+    return request(`/lookup/barcode/${encodeURIComponent(code)}`);
+}
+
 // --- grocery / shopping list ---------------------------------------------
 
 // GET /list -> {name: amount}

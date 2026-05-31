@@ -20,6 +20,7 @@ from grocery import read_json_from_bin, FOOD_AND_MEALS, jsons_to_objects, add_to
 import inventory
 import menu
 import shopping
+import lookup
 
 app = FastAPI(title="Cantina")
 
@@ -44,6 +45,13 @@ class FoodIn(BaseModel) :
     protein: float = Field(0.0, ge=0)
     fat: float = Field(0.0, ge=0)
     desc: Annotated[str, Field(max_length=500)] = ""
+    # Optional metadata (from barcode lookup or manual entry).
+    brand: Annotated[str, Field(max_length=80)] = ""
+    serving_size: Annotated[str, Field(max_length=80)] = ""
+    barcode: Annotated[str, Field(max_length=32)] = ""
+    fiber: float = Field(0.0, ge=0)
+    sugar: float = Field(0.0, ge=0)
+    sodium: float = Field(0.0, ge=0)            # in mg
 
     @field_validator("name")
     @classmethod
@@ -107,7 +115,9 @@ def list_meals() :
 @app.post("/foods")
 def add_food(food: FoodIn) :
     f = Food(food.name, food.stores, food.cost, food.cals,
-             food.carbs, food.protein, food.fat, food.desc)
+             food.carbs, food.protein, food.fat, food.desc,
+             brand=food.brand, serving_size=food.serving_size, barcode=food.barcode,
+             fiber=food.fiber, sugar=food.sugar, sodium=food.sodium)
     add_to_bin(f.to_json())
     return {"ok" : True}
 
@@ -119,9 +129,22 @@ def update_food(name: str, food: FoodIn) :
     if name != food.name :
         raise HTTPException(status_code=400, detail="path name and body name must match")
     f = Food(food.name, food.stores, food.cost, food.cals,
-             food.carbs, food.protein, food.fat, food.desc)
+             food.carbs, food.protein, food.fat, food.desc,
+             brand=food.brand, serving_size=food.serving_size, barcode=food.barcode,
+             fiber=food.fiber, sugar=food.sugar, sodium=food.sodium)
     add_to_bin(f.to_json())
     return {"ok" : True}
+
+# Proxy + transform: barcode -> FoodIn-shaped dict (or 404). The frontend
+# uses this to prefill the add-food form; saving the food is a separate POST/PUT.
+@app.get("/lookup/barcode/{code}")
+def lookup_barcode(code: str) :
+    if not code.isdigit() or len(code) > 32 :
+        raise HTTPException(status_code=400, detail="barcode must be digits, <=32 chars")
+    result = lookup.lookup(code)
+    if result is None :
+        raise HTTPException(status_code=404, detail=f"no product found for barcode '{code}'")
+    return result
 
 @app.get("/catalog/uses/{food_name}")
 def food_uses(food_name: str) :

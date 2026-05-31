@@ -116,6 +116,7 @@ function renderFoods(foods) {
                 el("button", { class: "icon ghost danger-text", title: "delete", textContent: "×",
                     onclick: (e) => { e.preventDefault(); e.stopPropagation(); onDeleteFood(f.name); } }),
             ]),
+            f.brand && el("div", { class: "desc brand", textContent: f.brand }),
             f.desc && el("div", { class: "desc", textContent: f.desc }),
             el("div", { class: "cost", textContent: `$${parseFloat(f.cost).toFixed(2)}` }),
             el("div", { class: "macros", textContent: fmtMacros(macros) }),
@@ -234,6 +235,118 @@ function renderListDashboard(list) {
     }
 }
 
+// Fill empty fields of the dashboard add-food form from a lookup result.
+// Anything the user already typed is preserved (we don't overwrite non-empty
+// fields). `result` is shaped like FoodIn (from /lookup/barcode/{code}).
+function prefillAddFoodForm(result) {
+    const form = $("add-food-form");
+    if (!form) return;
+    const fields = ["name", "brand", "serving_size", "barcode", "desc",
+                    "cost", "cals", "carbs", "protein", "fat",
+                    "fiber", "sugar", "sodium", "stores"];
+    for (const k of fields) {
+        const input = form.elements[k];
+        if (!input) continue;
+        const current = (input.value || "").trim();
+        const isEmpty = current === "" || current === "0";
+        if (!isEmpty) continue;
+        let v = result[k];
+        if (v == null) continue;
+        if (Array.isArray(v)) v = v.join(", ");
+        input.value = String(v);
+    }
+    // If we filled anything optional, open the disclosure so the user sees it.
+    const det = form.querySelector("details.disclosure");
+    if (det && (result.brand || result.serving_size || result.fiber || result.sugar || result.sodium)) {
+        det.open = true;
+    }
+    form.hidden = false;
+}
+
+async function onLookupBarcode() {
+    const form = $("add-food-form");
+    if (!form) return;
+    const code = (form.elements.barcode.value || "").trim();
+    if (!code) return setStatus("Enter or scan a barcode first.");
+    setStatus(`Looking up ${code}…`, "info");
+    try {
+        const result = await api.lookupBarcode(code);
+        prefillAddFoodForm(result);
+        setStatus(`Found “${result.name}${result.brand ? " — " + result.brand : ""}”. Review and save.`, "info");
+    } catch (err) {
+        setStatus(`Lookup failed: ${err.message}`);
+    }
+}
+
+async function onScanBarcode() {
+    if (!("BarcodeDetector" in window)) {
+        // graceful fallback: just prompt for manual entry
+        const code = window.prompt("This browser can't access the camera scanner. Enter the barcode manually:");
+        if (!code) return;
+        const form = $("add-food-form");
+        form.elements.barcode.value = code.trim();
+        return onLookupBarcode();
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return setStatus("This browser can't access the camera.");
+    }
+    await startScannerModal();
+}
+
+// Camera modal: open a small overlay with the video feed; BarcodeDetector
+// polls every 250ms; first match fills the barcode field and triggers lookup.
+async function startScannerModal() {
+    let stream;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" } },
+            audio: false,
+        });
+    } catch (err) {
+        return setStatus(`Camera access denied: ${err.message}`);
+    }
+    const video = el("video", { autoplay: true, playsinline: true });
+    video.srcObject = stream;
+    const closeBtn = el("button", { class: "ghost", textContent: "Cancel" });
+    const modal = el("div", { class: "scan-modal" }, [
+        el("div", { class: "scan-modal-inner" }, [
+            el("h3", { textContent: "Point camera at barcode" }),
+            video,
+            closeBtn,
+        ]),
+    ]);
+    document.body.appendChild(modal);
+
+    let stopped = false;
+    const stop = () => {
+        if (stopped) return;
+        stopped = true;
+        try { stream.getTracks().forEach((t) => t.stop()); } catch {}
+        modal.remove();
+    };
+    closeBtn.addEventListener("click", stop);
+
+    const detector = new window.BarcodeDetector({
+        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"],
+    });
+    const tick = async () => {
+        if (stopped) return;
+        try {
+            const codes = await detector.detect(video);
+            if (codes && codes.length) {
+                const code = codes[0].rawValue;
+                stop();
+                const form = $("add-food-form");
+                form.hidden = false;
+                form.elements.barcode.value = code;
+                return onLookupBarcode();
+            }
+        } catch { /* keep polling */ }
+        setTimeout(tick, 250);
+    };
+    setTimeout(tick, 500);    // small delay so the video has a frame
+}
+
 async function onAddListFromDashboard(e) {
     e.preventDefault();
     const f = readForm(e.target);
@@ -295,13 +408,23 @@ function renderFoodDetail(name) {
 
     view.appendChild(backLink());
 
+    const optionalStats = [];
+    if (f.fiber  && parseFloat(f.fiber)  > 0) optionalStats.push(["Fiber:",  `${f.fiber}g`]);
+    if (f.sugar  && parseFloat(f.sugar)  > 0) optionalStats.push(["Sugar:",  `${f.sugar}g`]);
+    if (f.sodium && parseFloat(f.sodium) > 0) optionalStats.push(["Sodium:", `${f.sodium} mg`]);
+
     view.appendChild(el("section", { class: "detail" }, [
         el("div", { class: "detail-head" }, [
             el("h2", { textContent: f.name }),
             el("button", { class: "ghost danger-text", textContent: "Delete",
                 onclick: () => onDeleteFood(f.name) }),
         ]),
+        f.brand && el("p", { class: "desc brand", textContent: f.brand }),
         f.desc && el("p", { class: "desc", textContent: f.desc }),
+        f.serving_size && el("p", { class: "muted",
+            textContent: `Per serving: ${f.serving_size}` }),
+        f.barcode && el("p", { class: "muted",
+            textContent: `Barcode: ${f.barcode}` }),
         el("div", { class: "stats" }, [
             el("div", {}, [el("span", { class: "muted", textContent: "Cost: " }),
                            el("strong", { textContent: `$${parseFloat(f.cost).toFixed(2)}` })]),
@@ -313,6 +436,9 @@ function renderFoodDetail(name) {
                            el("strong", { textContent: `${macros[2]}g` })]),
             el("div", {}, [el("span", { class: "muted", textContent: "Fat: " }),
                            el("strong", { textContent: `${macros[3]}g` })]),
+            ...optionalStats.map(([label, value]) =>
+                el("div", {}, [el("span", { class: "muted", textContent: label + " " }),
+                               el("strong", { textContent: value })])),
         ]),
         stores.length && el("div", { class: "stores" },
             stores.map((s) => el("span", { class: "chip", textContent: s }))),
@@ -368,7 +494,9 @@ function renderFoodDetail(name) {
         usesContainer,
     ]));
 
-    // edit form (prefilled)
+    // edit form (prefilled) -- includes the optional/extended fields too.
+    const moreOpen = !!(f.brand || f.serving_size || f.barcode
+                        || parseFloat(f.fiber) || parseFloat(f.sugar) || parseFloat(f.sodium));
     const editForm = el("form", { class: "form",
         onsubmit: (e) => { e.preventDefault(); onUpdateFood(e.target, f.name); } }, [
         el("div", { class: "form-grid" }, [
@@ -386,6 +514,23 @@ function renderFoodDetail(name) {
                 el("input", { name: "stores", value: stores.join(", ") })]),
             el("label", { class: "wide" }, [document.createTextNode("Description"),
                 el("input", { name: "desc", value: f.desc || "" })]),
+        ]),
+        el("details", { class: "disclosure", open: moreOpen }, [
+            el("summary", { textContent: "More fields" }),
+            el("div", { class: "form-grid" }, [
+                el("label", { class: "wide" }, [document.createTextNode("Brand"),
+                    el("input", { name: "brand", value: f.brand || "" })]),
+                el("label", { class: "wide" }, [document.createTextNode("Serving size"),
+                    el("input", { name: "serving_size", value: f.serving_size || "" })]),
+                el("label", { class: "wide" }, [document.createTextNode("Barcode"),
+                    el("input", { name: "barcode", value: f.barcode || "" })]),
+                el("label", {}, [document.createTextNode("Fiber (g)"),
+                    el("input", { name: "fiber", type: "number", step: "0.1", min: "0", value: String(f.fiber || 0) })]),
+                el("label", {}, [document.createTextNode("Sugar (g)"),
+                    el("input", { name: "sugar", type: "number", step: "0.1", min: "0", value: String(f.sugar || 0) })]),
+                el("label", {}, [document.createTextNode("Sodium (mg)"),
+                    el("input", { name: "sodium", type: "number", step: "0.1", min: "0", value: String(f.sodium || 0) })]),
+            ]),
         ]),
         el("div", { class: "form-actions" }, [
             el("button", { type: "submit", textContent: "Save changes" }),
@@ -648,11 +793,10 @@ function readForm(form) {
     return obj;
 }
 
-async function onAddFood(e) {
-    e.preventDefault();
-    const f = readForm(e.target);
-    const body = {
-        name: f.name.trim(),
+// Build a Food-shape body from a form-data object. Shared by add + update.
+function foodBodyFromForm(f, nameOverride) {
+    return {
+        name: (nameOverride ?? f.name ?? "").trim(),
         stores: f.stores ? f.stores.split(",").map((s) => s.trim()).filter(Boolean) : [],
         cost: parseFloat(f.cost) || 0,
         cals: parseInt(f.cals) || 0,
@@ -660,7 +804,18 @@ async function onAddFood(e) {
         protein: parseFloat(f.protein) || 0,
         fat: parseFloat(f.fat) || 0,
         desc: f.desc || "",
+        brand: (f.brand || "").trim(),
+        serving_size: (f.serving_size || "").trim(),
+        barcode: (f.barcode || "").trim(),
+        fiber: parseFloat(f.fiber) || 0,
+        sugar: parseFloat(f.sugar) || 0,
+        sodium: parseFloat(f.sodium) || 0,
     };
+}
+
+async function onAddFood(e) {
+    e.preventDefault();
+    const body = foodBodyFromForm(readForm(e.target));
     if (!body.name) return setStatus("Food needs a name.");
     try {
         await api.addFood(body);
@@ -672,17 +827,7 @@ async function onAddFood(e) {
 }
 
 async function onUpdateFood(form, name) {
-    const f = readForm(form);
-    const body = {
-        name,
-        stores: f.stores ? f.stores.split(",").map((s) => s.trim()).filter(Boolean) : [],
-        cost: parseFloat(f.cost) || 0,
-        cals: parseInt(f.cals) || 0,
-        carbs: parseFloat(f.carbs) || 0,
-        protein: parseFloat(f.protein) || 0,
-        fat: parseFloat(f.fat) || 0,
-        desc: f.desc || "",
-    };
+    const body = foodBodyFromForm(readForm(form), name);
     try {
         await api.updateFood(body);
         setStatus(`Saved "${name}".`, "info");
@@ -937,6 +1082,8 @@ function wireDashboardForms() {
     $("add-meal-form").addEventListener("submit", onAddMeal);
     $("add-list-form").addEventListener("submit", onAddListFromDashboard);
     $("add-ingredient").addEventListener("click", addIngredientRow);
+    $("lookup-btn").addEventListener("click", onLookupBarcode);
+    $("scan-btn").addEventListener("click", onScanBarcode);
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
