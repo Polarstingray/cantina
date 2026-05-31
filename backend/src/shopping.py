@@ -46,7 +46,7 @@ def ensure_in_catalog(name) :
 # --- mutations -------------------------------------------------------------
 
 def add(name, amount=1, db=SHOPPING) :
-    if amount < 1 :
+    if amount <= 0 :
         return -1
     ensure_in_catalog(name)
     lst = read_list(db)
@@ -55,13 +55,13 @@ def add(name, amount=1, db=SHOPPING) :
     return 0
 
 def remove(name, amount=1, db=SHOPPING) :
-    if amount < 1 :
+    if amount <= 0 :
         return -1
     lst = read_list(db)
-    if lst.get(name, 0) < amount :
+    if lst.get(name, 0) + 1e-9 < amount :
         return -1
     lst[name] -= amount
-    if lst[name] == 0 :
+    if lst[name] <= 1e-9 :
         lst.pop(name)
     write_list(lst, db)
     return 0
@@ -69,13 +69,13 @@ def remove(name, amount=1, db=SHOPPING) :
 # Check an item off the list. The full listed amount is removed; `to_inventory`
 # (default = full listed amount, capped) is added to inventory as food. The
 # remainder is silently discarded ("didn't end up buying it"). Returns the
-# number actually moved to inventory, or -1 if the item isn't on the list.
+# amount actually moved to inventory, or -1 if the item isn't on the list.
 def check_off(name, to_inventory=None, db=SHOPPING) :
     lst = read_list(db)
     listed = lst.get(name, 0)
-    if listed < 1 :
+    if listed <= 0 :
         return -1
-    moved = listed if to_inventory is None else max(0, min(int(to_inventory), listed))
+    moved = listed if to_inventory is None else max(0.0, min(float(to_inventory), listed))
     lst.pop(name)
     write_list(lst, db)
     if moved > 0 :

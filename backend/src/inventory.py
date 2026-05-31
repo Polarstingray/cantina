@@ -49,7 +49,7 @@ def has(name, amount=1, kind="food", db=INVENTORY) :
 # --- mutations -------------------------------------------------------------
 
 def add_stock(name, amount=1, kind="food", db=INVENTORY) :
-    if amount < 1 :
+    if amount <= 0 :
         return -1
     inv = read_inventory(db)
     section = inv[_section(kind)]
@@ -59,15 +59,17 @@ def add_stock(name, amount=1, kind="food", db=INVENTORY) :
 
 # Rejects (returns -1, changing nothing) if there isn't enough on hand -- it
 # does NOT clamp. You can't consume what you don't have; the cart relies on this.
+# `amount` may be fractional; the zero-cleanup uses a small tolerance so we
+# don't strand floating-point residue like 1.0 - 0.7 - 0.3 = -2.2e-16.
 def remove_stock(name, amount=1, kind="food", db=INVENTORY) :
-    if amount < 1 :
+    if amount <= 0 :
         return -1
     inv = read_inventory(db)
     section = inv[_section(kind)]
-    if section.get(name, 0) < amount :
+    if section.get(name, 0) + 1e-9 < amount :
         return -1
     section[name] -= amount
-    if section[name] == 0 :
+    if section[name] <= 1e-9 :
         section.pop(name)               # keep the map free of zero-count entries
     write_inventory(inv, db)
     return 0

@@ -51,7 +51,7 @@ class FoodIn(BaseModel) :
 
 class MealIn(BaseModel) :
     name: SafeName
-    foods: dict[SafeName, Annotated[int, Field(ge=1)]]   # {food_name: amount}
+    foods: dict[SafeName, Annotated[float, Field(gt=0)]]   # {food_name: amount}
     desc: Annotated[str, Field(max_length=500)] = ""
 
     @field_validator("name")
@@ -60,7 +60,7 @@ class MealIn(BaseModel) :
 
 class StockIn(BaseModel) :
     name: SafeName
-    amount: Annotated[int, Field(ge=1)] = 1
+    amount: Annotated[float, Field(gt=0)] = 1.0
     kind: Literal["food", "meal"] = "food"
 
     @field_validator("name")
@@ -69,7 +69,7 @@ class StockIn(BaseModel) :
 
 class ListItemIn(BaseModel) :
     name: SafeName
-    amount: Annotated[int, Field(ge=1)] = 1
+    amount: Annotated[float, Field(gt=0)] = 1.0
 
     @field_validator("name")
     @classmethod
@@ -77,7 +77,7 @@ class ListItemIn(BaseModel) :
 
 class CheckOffIn(BaseModel) :
     name: SafeName
-    to_inventory: Annotated[int, Field(ge=0)] | None = None
+    to_inventory: Annotated[float, Field(ge=0)] | None = None
 
     @field_validator("name")
     @classmethod

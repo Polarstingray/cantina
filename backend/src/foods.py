@@ -123,7 +123,7 @@ class Meal:
         if not food :
             print("Must add a food with a name", file=sys.stderr)
             return -1
-        if (amount < 1) :
+        if (amount <= 0) :
             print("Invalid amount to add", file=sys.stderr)
             return -1
         
@@ -141,19 +141,19 @@ class Meal:
         if not food :
             print("Must remove a food with a name", file=sys.stderr)
             return -1
-        if (amount < 1) :
+        if (amount <= 0) :
             print("Invalid amount to remove", file=sys.stderr)
             return -1
-        
+
         if food in self.foods :
-            if self.foods[food] < amount :
+            if self.foods[food] + 1e-9 < amount :
                 return -1
             else :
                 self.foods[food] -= amount
         else :
             print("Food item not in meal", file=sys.stderr)
             return -1
-        if self.foods[food] == 0 :
+        if self.foods[food] <= 1e-9 :
             self.foods.pop(food, None)
             print("Removing food item from ingredient list")
         return 0

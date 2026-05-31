@@ -85,6 +85,31 @@
             <div id="inventory"></div>
         </section>
 
+        <section id="list-section">
+            <div class="section-head">
+                <h2>Grocery list</h2>
+                <div class="head-actions">
+                    <button type="button" class="toggle" data-target="add-list-form">+ add to list</button>
+                    <a class="muted" href="#/list">full grocery list →</a>
+                </div>
+            </div>
+
+            <form id="add-list-form" class="form" hidden>
+                <datalist id="dashboard-list-food-options"></datalist>
+                <div class="form-grid">
+                    <label class="wide">Item<input name="name" list="dashboard-list-food-options"
+                        placeholder="type or pick from catalog" required></label>
+                    <label>Amount<input name="amount" type="number" min="0.5" step="0.5" value="1"></label>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="ghost cancel" data-target="add-list-form">Cancel</button>
+                    <button type="submit">Add to list</button>
+                </div>
+            </form>
+
+            <div id="list"></div>
+        </section>
+
         <section id="menu-section">
             <div class="section-head">
                 <h2>Menu</h2>

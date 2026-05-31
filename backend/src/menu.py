@@ -8,21 +8,25 @@ menu.py
                                           ingredient foods from inventory
 '''
 
+import math
+
 from grocery import read_json_from_bin, FOOD_AND_MEALS, jsons_to_objects
 from inventory import read_inventory, write_inventory, INVENTORY
 
 
 # How many copies of `meal` can be built from the on-hand food counts.
-# = min over ingredients of (on_hand // required); 0 if any ingredient is short.
+# = min over ingredients of floor(on_hand / required); 0 if any ingredient is short.
 # `food_counts` is the {name: qty} map from inventory's "foods" section.
+# Required amounts may be fractional (e.g. 0.5 eggs); the count returned is
+# still an integer (you make whole meals).
 def buildable_count(meal, food_counts) :
     if not meal.foods :
         return 0
     possible = []
     for food, required in meal.foods.items() :
-        if required < 1 :
+        if required <= 0 :
             continue
-        possible.append(food_counts.get(food.name, 0) // required)
+        possible.append(math.floor(food_counts.get(food.name, 0) / required))
     return min(possible) if possible else 0
 
 
@@ -45,7 +49,7 @@ def make_meal(meal, inv_db=INVENTORY) :
         return -1
     for food, required in meal.foods.items() :
         food_counts[food.name] -= required
-        if food_counts[food.name] == 0 :
+        if food_counts[food.name] <= 1e-9 :
             food_counts.pop(food.name)
     write_inventory(inv, inv_db)
     return 0

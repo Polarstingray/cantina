@@ -45,7 +45,11 @@ function el(tag, props = {}, children = []) {
         else if (k.startsWith("on") && typeof v === "function") {
             node.addEventListener(k.slice(2).toLowerCase(), v);
         }
-        else if (k in node) node[k] = v;
+        else if (k in node) {
+            // Some DOM attributes (e.g. <input>.list) are read-only getters;
+            // fall back to setAttribute if the property assignment throws.
+            try { node[k] = v; } catch { node.setAttribute(k, v); }
+        }
         else node.setAttribute(k, v);
     }
     for (const child of [].concat(children)) {
@@ -57,6 +61,14 @@ function el(tag, props = {}, children = []) {
 
 const foodByName = (name) => state.foods.find((f) => f.name === name);
 const mealByName = (name) => state.meals.find((m) => m.name === name);
+
+// Format a numeric quantity for display: trim trailing zeros so 2 renders
+// as "2", 1.5 as "1.5", 0.25 as "0.25" — without floating-point cruft.
+function fmtQty(n) {
+    if (n == null || isNaN(n)) return "0";
+    const v = Math.round(Number(n) * 1000) / 1000;     // kill 1e-12 residue
+    return Number.isInteger(v) ? String(v) : v.toString();
+}
 
 function mealCost(meal) {
     let total = 0;
@@ -135,7 +147,7 @@ function renderMeals(meals) {
             el("div", { class: "cost", textContent: `$${mealCost(m).toFixed(2)}` }),
             el("ul", { class: "ingredients-list" },
                 items.map(([name, n]) => el("li", {
-                    textContent: `${name} × ${n}${foodNames.has(name) ? "" : "  (missing)"}`,
+                    textContent: `${name} × ${fmtQty(n)}${foodNames.has(name) ? "" : "  (missing)"}`,
                     class: foodNames.has(name) ? "" : "missing",
                 }))),
             missing.length && el("div", { class: "warn-chip",
@@ -153,10 +165,10 @@ function inventoryRow(name, qty, kind, opts = {}) {
         nameNode,
         el("div", { class: "controls" }, [
             el("button", { class: "icon ghost", textContent: "−",
-                onclick: () => onChangeStock(name, kind, -1) }),
-            el("span", { class: "qty", textContent: String(qty) }),
+                onclick: () => onChangeStock(name, kind, -0.5) }),
+            el("span", { class: "qty", textContent: fmtQty(qty) }),
             el("button", { class: "icon ghost", textContent: "+",
-                onclick: () => onChangeStock(name, kind, +1) }),
+                onclick: () => onChangeStock(name, kind, +0.5) }),
         ]),
     ]);
 }
@@ -187,6 +199,54 @@ function renderInventory(inv) {
         for (const [name, qty] of mealEntries) mealGroup.appendChild(inventoryRow(name, qty, "meal"));
     }
     container.appendChild(mealGroup);
+}
+
+function renderListDashboard(list) {
+    // keep the dashboard add-list datalist in sync with the current catalog
+    const dl = $("dashboard-list-food-options");
+    if (dl) {
+        dl.innerHTML = "";
+        for (const f of state.foods) dl.appendChild(el("option", { value: f.name }));
+    }
+
+    const container = $("list");
+    container.innerHTML = "";
+    const entries = Object.entries(list);
+    if (!entries.length) {
+        container.appendChild(el("div", { class: "empty",
+            textContent: "Nothing on the list. Use “+ add to list” above." }));
+        return;
+    }
+    for (const [name, qty] of entries) {
+        container.appendChild(el("div", { class: "inv-row" }, [
+            el("a", { href: `#/food/${encodeURIComponent(name)}`, textContent: name }),
+            el("div", { class: "controls" }, [
+                el("button", { class: "icon ghost", textContent: "−",
+                    onclick: () => onListChange(name, -0.5) }),
+                el("span", { class: "qty", textContent: fmtQty(qty) }),
+                el("button", { class: "icon ghost", textContent: "+",
+                    onclick: () => onListChange(name, +0.5) }),
+                el("button", { class: "icon check-btn", title: "check off (move all to inventory)",
+                    textContent: "✓",
+                    onclick: () => onCheckOff(name, qty) }),
+            ]),
+        ]));
+    }
+}
+
+async function onAddListFromDashboard(e) {
+    e.preventDefault();
+    const f = readForm(e.target);
+    const name = (f.name || "").trim();
+    const amount = parseFloat(f.amount) || 1;
+    if (!name || amount <= 0) return setStatus("Need a name and a positive amount.");
+    try {
+        await api.addToList({ name, amount });
+        e.target.reset();
+        e.target.hidden = true;
+        setStatus(`Added ${amount} × ${name} to grocery list.`, "info");
+        await loadAll();
+    } catch (err) { setStatus(err.message); }
 }
 
 function renderMenu(menu) {
@@ -262,13 +322,13 @@ function renderFoodDetail(name) {
     view.appendChild(el("section", { class: "detail" }, [
         el("h3", { textContent: "Stock on hand" }),
         el("div", { class: "inv-row" }, [
-            el("span", { textContent: `${stock} in inventory` }),
+            el("span", { textContent: `${fmtQty(stock)} in inventory` }),
             el("div", { class: "controls" }, [
                 el("button", { class: "icon ghost", textContent: "−",
-                    onclick: () => onChangeStock(f.name, "food", -1) }),
-                el("span", { class: "qty", textContent: String(stock) }),
+                    onclick: () => onChangeStock(f.name, "food", -0.5) }),
+                el("span", { class: "qty", textContent: fmtQty(stock) }),
                 el("button", { class: "icon ghost", textContent: "+",
-                    onclick: () => onChangeStock(f.name, "food", +1) }),
+                    onclick: () => onChangeStock(f.name, "food", +0.5) }),
             ]),
         ]),
     ]));
@@ -276,14 +336,14 @@ function renderFoodDetail(name) {
     // add to grocery list
     const addListForm = el("form", { class: "form inline-form",
         onsubmit: (e) => { e.preventDefault();
-            const amt = parseInt(e.target.elements.amount.value) || 1;
+            const amt = parseFloat(e.target.elements.amount.value) || 1;
             onAddToList(f.name, amt); } }, [
         el("label", {}, [
             document.createTextNode("Add to grocery list "),
-            el("input", { type: "number", name: "amount", min: "1", value: "1" }),
+            el("input", { type: "number", name: "amount", min: "0.5", step: "0.5", value: "1" }),
         ]),
         el("button", { type: "submit", textContent: "Add" }),
-        listed > 0 && el("span", { class: "muted", textContent: `(currently ${listed} listed)` }),
+        listed > 0 && el("span", { class: "muted", textContent: `(currently ${fmtQty(listed)} listed)` }),
     ]);
     view.appendChild(el("section", { class: "detail" }, [
         el("h3", { textContent: "Grocery list" }),
@@ -382,7 +442,7 @@ function renderMealDetail(name) {
                 foodNames.has(n)
                     ? el("a", { href: `#/food/${encodeURIComponent(n)}`, textContent: n })
                     : el("span", { textContent: n }),
-                document.createTextNode(` × ${qty}${foodNames.has(n) ? "" : "  (missing from catalog)"}`),
+                document.createTextNode(` × ${fmtQty(qty)}${foodNames.has(n) ? "" : "  (missing from catalog)"}`),
             ]))),
     ]));
 
@@ -413,8 +473,8 @@ function renderListPage() {
         onsubmit: (e) => {
             e.preventDefault();
             const name = e.target.elements.name.value.trim();
-            const amount = parseInt(e.target.elements.amount.value) || 1;
-            if (!name) return setStatus("Need a name.");
+            const amount = parseFloat(e.target.elements.amount.value) || 1;
+            if (!name || amount <= 0) return setStatus("Need a name and a positive amount.");
             onAddToList(name, amount);
             e.target.reset();
         } }, [
@@ -424,7 +484,7 @@ function renderListPage() {
                 el("input", { name: "name", required: true, list: dlId,
                     placeholder: "type or pick from catalog" })]),
             el("label", {}, [document.createTextNode("Amount"),
-                el("input", { name: "amount", type: "number", min: "1", value: "1" })]),
+                el("input", { name: "amount", type: "number", min: "0.5", step: "0.5", value: "1" })]),
         ]),
         el("div", { class: "form-actions" }, [
             el("button", { type: "submit", textContent: "Add to list" }),
@@ -466,7 +526,7 @@ function listRow(name, qty) {
     // Default the "moved to inventory" amount to the full listed amount.
     const row = el("div", { class: "list-row" }, [
         el("a", { class: "list-name", href: `#/food/${encodeURIComponent(name)}`, textContent: name }),
-        el("span", { class: "qty", textContent: String(qty) }),
+        el("span", { class: "qty", textContent: fmtQty(qty) }),
         el("button", { class: "check-btn", textContent: "✓ check off",
             onclick: () => toggleCheckRow(row, name, qty) }),
     ]);
@@ -478,12 +538,13 @@ function toggleCheckRow(row, name, qty) {
     if (existing) { existing.remove(); return; }
     const form = el("form", { class: "check-form",
         onsubmit: (e) => { e.preventDefault();
-            const n = parseInt(e.target.elements.n.value);
+            const n = parseFloat(e.target.elements.n.value);
             onCheckOff(name, isNaN(n) ? qty : n); } }, [
         el("label", {}, [
             document.createTextNode("Move to inventory: "),
-            el("input", { type: "number", name: "n", min: "0", max: String(qty), value: String(qty) }),
-            document.createTextNode(` of ${qty}`),
+            el("input", { type: "number", name: "n", min: "0", step: "0.5",
+                max: fmtQty(qty), value: fmtQty(qty) }),
+            document.createTextNode(` of ${fmtQty(qty)}`),
         ]),
         el("button", { type: "submit", textContent: "Confirm" }),
         el("button", { type: "button", class: "ghost", textContent: "Cancel",
@@ -505,8 +566,8 @@ function renderInventoryPage() {
         onsubmit: (e) => {
             e.preventDefault();
             const name = e.target.elements.name.value.trim();
-            const amount = parseInt(e.target.elements.amount.value) || 1;
-            if (!name) return setStatus("Need a name.");
+            const amount = parseFloat(e.target.elements.amount.value) || 1;
+            if (!name || amount <= 0) return setStatus("Need a name and a positive amount.");
             onStockAdd(name, amount);
             e.target.reset();
         } }, [
@@ -515,7 +576,7 @@ function renderInventoryPage() {
                 el("input", { name: "name", required: true,
                     placeholder: "type a name" })]),
             el("label", {}, [document.createTextNode("Amount"),
-                el("input", { name: "amount", type: "number", min: "1", value: "1" })]),
+                el("input", { name: "amount", type: "number", min: "0.5", step: "0.5", value: "1" })]),
         ]),
         el("div", { class: "form-actions" }, [
             el("button", { type: "submit", textContent: "Stock it" }),
@@ -554,12 +615,12 @@ function bulkInventoryRow(name, qty, kind) {
     const setForm = el("form", { class: "inline-set",
         onsubmit: (e) => {
             e.preventDefault();
-            const target = parseInt(setInput.value);
+            const target = parseFloat(setInput.value);
             if (isNaN(target) || target < 0) return setStatus("Enter a non-negative number.");
             onSetStock(name, kind, qty, target);
         } }, [
         document.createTextNode("set to "),
-        (setInput = el("input", { type: "number", min: "0", value: String(qty) })),
+        (setInput = el("input", { type: "number", min: "0", step: "0.5", value: fmtQty(qty) })),
         el("button", { type: "submit", textContent: "Set" }),
     ]);
 
@@ -567,10 +628,10 @@ function bulkInventoryRow(name, qty, kind) {
         nameNode,
         el("div", { class: "controls" }, [
             el("button", { class: "icon ghost", textContent: "−",
-                onclick: () => onChangeStock(name, kind, -1) }),
-            el("span", { class: "qty", textContent: String(qty) }),
+                onclick: () => onChangeStock(name, kind, -0.5) }),
+            el("span", { class: "qty", textContent: fmtQty(qty) }),
             el("button", { class: "icon ghost", textContent: "+",
-                onclick: () => onChangeStock(name, kind, +1) }),
+                onclick: () => onChangeStock(name, kind, +0.5) }),
             setForm,
         ]),
     ]);
@@ -634,7 +695,7 @@ function addIngredientRow() {
     const rows = $("ingredient-rows");
     const select = el("select", { name: "food" },
         state.foods.map((f) => el("option", { value: f.name, textContent: f.name })));
-    const amount = el("input", { type: "number", min: "1", value: "1", name: "amount" });
+    const amount = el("input", { type: "number", min: "0.5", step: "0.5", value: "1", name: "amount" });
     const remove = el("button", { type: "button", class: "icon ghost", textContent: "×",
         onclick: () => row.remove() });
     const row = el("div", { class: "ingredient-row" }, [select, amount, remove]);
@@ -650,8 +711,8 @@ async function onAddMeal(e) {
     const ingredients = {};
     for (const row of $("ingredient-rows").querySelectorAll(".ingredient-row")) {
         const fname = row.querySelector("select").value;
-        const amt = parseInt(row.querySelector("input").value) || 0;
-        if (!fname || amt < 1) continue;
+        const amt = parseFloat(row.querySelector("input").value) || 0;
+        if (!fname || amt <= 0) continue;
         ingredients[fname] = (ingredients[fname] || 0) + amt;
     }
     if (!Object.keys(ingredients).length) return setStatus("Meal needs at least one ingredient.");
@@ -727,6 +788,15 @@ async function onMakeMeal(name) {
     } catch (err) { setStatus(err.message); }
 }
 
+async function onListChange(name, delta) {
+    try {
+        if (delta > 0) await api.addToList({ name, amount: delta });
+        else await api.removeFromList({ name, amount: -delta });
+        setStatus("");
+        await loadAll();
+    } catch (err) { setStatus(err.message); }
+}
+
 async function onAddToList(name, amount) {
     try {
         await api.addToList({ name, amount });
@@ -791,6 +861,7 @@ function renderCurrentRoute() {
         renderFoods(state.foods);
         renderMeals(state.meals);
         renderInventory(state.inventory);
+        renderListDashboard(state.list);
         renderMenu(state.menu);
         return;
     }
@@ -864,6 +935,7 @@ function wireDashboardForms() {
     }
     $("add-food-form").addEventListener("submit", onAddFood);
     $("add-meal-form").addEventListener("submit", onAddMeal);
+    $("add-list-form").addEventListener("submit", onAddListFromDashboard);
     $("add-ingredient").addEventListener("click", addIngredientRow);
 }
 
