@@ -11,8 +11,9 @@ inventory.py
     (see menu.py), which is computed from the food counts.
 '''
 
-from grocery import read_json_from_bin, write_json_to_bin, FOOD_AND_MEALS, jsons_to_objects
+from grocery import read_json_from_bin, FOOD_AND_MEALS, jsons_to_objects
 from config import data_path
+from db import get_conn, HOUSEHOLD_ID
 
 INVENTORY = data_path("inventory.bin")
 
@@ -24,16 +25,28 @@ def _section(kind) :
 
 # --- persistence -----------------------------------------------------------
 # Inventory is one json object with a "foods" and a "meals" section, each a
-# {name: quantity} map. Reuses grocery.py's binary read/write helpers.
+# {name: quantity} map. Backed by the SQLite `inventory` table (see db.py);
+# the {name: qty} shape is reassembled on read so callers are unchanged.
 
 def read_inventory(db=INVENTORY) :
-    data = read_json_from_bin(db)
-    if not data :                       # read_json_from_bin returns [] when empty
-        return {"foods" : {}, "meals" : {}}
-    return data
+    inv = {"foods" : {}, "meals" : {}}
+    with get_conn() as conn :
+        rows = conn.execute(
+            "SELECT kind, name, qty FROM inventory WHERE household_id = ?",
+            (HOUSEHOLD_ID,)).fetchall()
+    for r in rows :
+        inv["foods" if r["kind"] == "food" else "meals"][r["name"]] = r["qty"]
+    return inv
 
 def write_inventory(inv, db=INVENTORY) :
-    write_json_to_bin(inv, db)
+    with get_conn() as conn :
+        conn.execute("DELETE FROM inventory WHERE household_id = ?", (HOUSEHOLD_ID,))
+        for kind, section in (("food", inv.get("foods") or {}),
+                              ("meal", inv.get("meals") or {})) :
+            for name, qty in section.items() :
+                conn.execute(
+                    "INSERT INTO inventory (household_id, kind, name, qty) VALUES (?, ?, ?, ?)",
+                    (HOUSEHOLD_ID, kind, name, float(qty)))
 
 
 # --- queries ---------------------------------------------------------------

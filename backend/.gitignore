@@ -1,5 +1,7 @@
 *.pkl
 *db
+*.db-wal
+*.db-shm
 *.bin
 *.bin.bak.*
 *.tmp

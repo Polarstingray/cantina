@@ -22,15 +22,18 @@ sys.path.insert(0, _SRC)
 import pytest
 from fastapi.testclient import TestClient
 
+import db  # noqa: E402
 import api  # noqa: E402  (must come after the env + path setup above)
 
 
 @pytest.fixture(autouse=True)
 def clean_data_dir() :
     '''Wipe the temp data dir before each test so cases are independent.
-    Missing .bin files read back as empty state, so this is a full reset.'''
+    Deleting the sqlite db file (and its WAL sidecars) plus resetting db's
+    init flag means the next access rebuilds an empty schema from scratch.'''
     for name in os.listdir(_TMP_DATA_DIR) :
         os.remove(os.path.join(_TMP_DATA_DIR, name))
+    db.reset()
     yield
 
 
