@@ -17,6 +17,9 @@
 #
 set -euo pipefail
 
+# Backups contain the database (password hashes + session tokens): owner-only.
+umask 077
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${CANTINA_DATA_DIR:-$SCRIPT_DIR/../src}"
 BACKUP_DIR="${CANTINA_BACKUP_DIR:-$HOME/cantina-backups}"

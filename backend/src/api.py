@@ -9,15 +9,18 @@ api.py
             (--host 0.0.0.0 makes it reachable from other devices on the LAN)
 '''
 
+import logging
 import os
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 import config
 import auth
+import ratelimit
 from foods import Food, Meal
 from grocery import read_json_from_bin, FOOD_AND_MEALS, jsons_to_objects, add_to_bin, remove_from_bin
 import inventory
@@ -26,13 +29,53 @@ import shopping
 import lookup
 import spending
 
-app = FastAPI(title="Cantina")
+log = logging.getLogger("cantina.auth")
+
+# Swagger/OpenAPI reveal the whole API surface, so they're off unless explicitly
+# enabled for local development.
+_ENABLE_DOCS = os.environ.get("CANTINA_ENABLE_DOCS", "0") == "1"
+app = FastAPI(title="Cantina",
+              docs_url="/docs" if _ENABLE_DOCS else None,
+              redoc_url="/redoc" if _ENABLE_DOCS else None,
+              openapi_url="/openapi.json" if _ENABLE_DOCS else None)
 
 # Every data route requires a logged-in user. The dependency also scopes the
 # request to that user's household (see auth.get_current_user), so the handlers
 # below need no auth/household code of their own. Auth + static routes stay on
 # `app` so login itself isn't gated.
 router = APIRouter(dependencies=[Depends(auth.get_current_user)])
+
+
+# --- security middleware ---------------------------------------------------
+
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": (
+        "default-src 'self'; img-src 'self' data:; object-src 'none'; "
+        "base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+    ),
+}
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+_CSRF_HEADER = "x-requested-with"
+_CSRF_VALUE = "cantina"
+
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next) :
+    # CSRF: state-changing requests must carry our custom header. A cross-site
+    # page can't set it without a CORS grant (we allow none), and SameSite=Strict
+    # already keeps the session cookie off cross-site requests -- defense in depth.
+    if request.method not in _SAFE_METHODS :
+        if request.headers.get(_CSRF_HEADER, "").lower() != _CSRF_VALUE :
+            return JSONResponse({"detail": "missing or invalid X-Requested-With header"}, status_code=403)
+    response = await call_next(request)
+    for key, value in _SECURITY_HEADERS.items() :
+        response.headers.setdefault(key, value)
+    if auth.SECURE_COOKIES :     # only meaningful (and safe) once served over HTTPS
+        response.headers.setdefault("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+    return response
 
 
 # --- request bodies --------------------------------------------------------
@@ -312,26 +355,44 @@ def post_spending_from_stock_add(body: PurchaseIn) :
 # session, and /auth/me, /auth/users carry their own dependency.
 
 class LoginIn(BaseModel) :
-    email: str
-    password: str
+    email: Annotated[str, Field(max_length=254)]
+    password: Annotated[str, Field(min_length=1, max_length=200)]
 
 class NewUserIn(BaseModel) :
-    email: str
-    password: Annotated[str, Field(min_length=6, max_length=200)]
+    email: Annotated[str, Field(max_length=254)]
+    password: Annotated[str, Field(min_length=auth.MIN_PASSWORD_LENGTH, max_length=200)]
     role: Literal["admin", "member"] = "member"
 
 
 @app.post("/auth/login")
-def login(body: LoginIn, response: Response) :
-    user = auth.get_user_by_email(body.email)
-    if not user or not auth.verify_password(body.password, user["password_hash"]) :
+def login(body: LoginIn, request: Request, response: Response) :
+    ip = ratelimit.client_ip(request)
+    email = body.email.strip().lower()
+    wait = ratelimit.retry_after(ip, email)
+    if wait is not None :
+        log.warning("login throttled ip=%s email=%s", ip, email)
+        raise HTTPException(status_code=429, detail="too many attempts, please wait and try again",
+                            headers={"Retry-After": str(wait)})
+    user = auth.authenticate(body.email, body.password)
+    if not user :
+        ratelimit.record_failure(ip, email)
+        log.warning("login failed ip=%s email=%s", ip, email)
         raise HTTPException(status_code=401, detail="invalid email or password")
+    ratelimit.clear(ip, email)
     auth.set_session_cookie(response, auth.create_session(user["id"]))
+    log.info("login ok ip=%s email=%s", ip, user["email"])
     return {"ok": True, "user": {"email": user["email"], "role": user["role"]}}
 
 @app.post("/auth/logout")
 def logout(request: Request, response: Response) :
-    auth.delete_session(request.cookies.get(auth.SESSION_COOKIE))
+    auth.delete_session(request.cookies.get(auth.COOKIE_NAME))
+    auth.clear_session_cookie(response)
+    return {"ok": True}
+
+@app.post("/auth/logout-all")
+async def logout_all(response: Response, user=Depends(auth.get_current_user)) :
+    # Revoke every session for this user (e.g. after a suspected compromise).
+    auth.delete_user_sessions(user["id"])
     auth.clear_session_cookie(response)
     return {"ok": True}
 

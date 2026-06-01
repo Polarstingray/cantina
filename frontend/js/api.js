@@ -25,9 +25,16 @@ export function setUnauthorizedHandler(fn) { onUnauthorized = fn; }
 // credentials:"same-origin" sends the session cookie (same origin as the API).
 async function request(path, options = {}) {
     const res = await fetch(BASE_URL + path, {
-        headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
         ...options,
+        // X-Requested-With is the CSRF guard: the backend requires it on every
+        // state-changing request. A cross-site page can't set a custom header
+        // without a CORS grant, which we don't give.
+        headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "cantina",
+            ...(options.headers || {}),
+        },
     });
     if (!res.ok) {
         // Backend sends { detail: "..." } on HTTPException; surface it.

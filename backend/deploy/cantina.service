@@ -6,6 +6,15 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/home/penguin/projects/cantina/backend/src
+# Set the data dir EXPLICITLY so the server and the manage.py CLI can never drift
+# to different databases. Use this exact value when running manage.py too.
+Environment=CANTINA_DATA_DIR=/home/penguin/projects/cantina/backend/src
+# --- Phase 3 (remote access over HTTPS via the tunnel) ---
+# Uncomment these once cloudflared terminates TLS in front of the app:
+#Environment=CANTINA_SECURE_COOKIES=1
+#Environment=CANTINA_TRUSTED_PROXY=1
+# and bind to localhost instead of 0.0.0.0 so the only way in is the tunnel/LAN:
+#ExecStart=/home/penguin/projects/cantina/backend/src/venv/bin/uvicorn api:app --host 127.0.0.1 --port 8000
 ExecStart=/home/penguin/projects/cantina/backend/src/venv/bin/uvicorn api:app --host 0.0.0.0 --port 8000
 Restart=on-failure
 RestartSec=3

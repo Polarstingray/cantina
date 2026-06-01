@@ -18,6 +18,7 @@ db.py
 
 import contextvars
 import json
+import os
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -67,10 +68,11 @@ CREATE TABLE IF NOT EXISTS users (
 -- Server-side sessions: a random opaque token in an httponly cookie maps to a
 -- user. Revocable (delete the row) and carries no secret, unlike a signed JWT.
 CREATE TABLE IF NOT EXISTS sessions (
-    token      TEXT    PRIMARY KEY,
-    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-    expires_at TEXT    NOT NULL
+    token        TEXT    PRIMARY KEY,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    expires_at   TEXT    NOT NULL,        -- ultimate (absolute) cap
+    last_used_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))  -- idle clock
 );
 
 CREATE TABLE IF NOT EXISTS foods (
@@ -157,10 +159,22 @@ def _raw_connect() :
     return conn
 
 
+def _migrate(conn) :
+    '''Additive, idempotent schema migrations for databases created by an older
+    version (CREATE TABLE IF NOT EXISTS won't add columns to an existing table).'''
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(sessions)")}
+    if "last_used_at" not in cols :
+        # New column on an existing sessions table. No DEFAULT (ALTER can't use a
+        # non-constant default); seed existing rows from created_at.
+        conn.execute("ALTER TABLE sessions ADD COLUMN last_used_at TEXT")
+        conn.execute("UPDATE sessions SET last_used_at = created_at WHERE last_used_at IS NULL")
+
+
 def _init() :
     conn = _raw_connect()
     try :
         conn.executescript(SCHEMA)
+        _migrate(conn)
         conn.execute("INSERT OR IGNORE INTO households (id, name) VALUES (1, 'home')")
         # Import the legacy .bin files exactly once, the first time we see a
         # fresh database. The flag makes it idempotent even if the household
@@ -171,6 +185,13 @@ def _init() :
         conn.commit()
     finally :
         conn.close()
+    # The database holds password hashes and live session tokens: keep it
+    # owner-only (umask in config.py covers fresh files; this fixes existing 0644).
+    for path in (DB_PATH, DB_PATH + "-wal", DB_PATH + "-shm") :
+        try :
+            os.chmod(path, 0o600)
+        except OSError :
+            pass
 
 
 def ensure_initialized() :

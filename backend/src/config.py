@@ -22,8 +22,18 @@ DATA_DIR = os.environ.get("CANTINA_DATA_DIR") or _SRC_DIR
 HOST = os.environ.get("CANTINA_HOST", "0.0.0.0")
 PORT = int(os.environ.get("CANTINA_PORT", "8000"))
 
-# Make sure the data directory exists before any module tries to write into it.
-os.makedirs(DATA_DIR, exist_ok=True)
+# The data dir holds the database (password hashes + session tokens) and data
+# backups, so keep everything we create owner-only. umask affects all files this
+# process creates afterward (db, WAL sidecars, backups).
+os.umask(0o077)
+
+# Make sure the data directory exists before any module tries to write into it,
+# and tighten it to 0700 even if it already existed (umask only affects new dirs).
+os.makedirs(DATA_DIR, mode=0o700, exist_ok=True)
+try :
+    os.chmod(DATA_DIR, 0o700)
+except OSError :
+    pass
 
 
 def data_path(filename: str) -> str :

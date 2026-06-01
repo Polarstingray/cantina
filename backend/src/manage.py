@@ -33,6 +33,23 @@ def cmd_create_user(args) :
     return 0
 
 
+def cmd_reset_password(args) :
+    password = args.password or getpass.getpass("new password: ")
+    if not password :
+        print("error: password required", file=sys.stderr)
+        return 1
+    try :
+        ok = auth.set_password(args.email, password)
+    except ValueError as e :
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    if not ok :
+        print(f"error: no user with email '{args.email.strip().lower()}'", file=sys.stderr)
+        return 1
+    print(f"password reset for {args.email.strip().lower()}")
+    return 0
+
+
 def cmd_list_users(args) :
     hid = args.household or db.HOUSEHOLD_ID
     users = auth.list_users(hid)
@@ -54,6 +71,11 @@ def main() :
     c.add_argument("--role", choices=["admin", "member"], default="member")
     c.add_argument("--household", type=int, default=None, help="household id (default 1)")
     c.set_defaults(func=cmd_create_user)
+
+    r = sub.add_parser("reset-password", help="set a user's password")
+    r.add_argument("--email", required=True)
+    r.add_argument("--password", help="omit to be prompted (keeps it out of shell history)")
+    r.set_defaults(func=cmd_reset_password)
 
     l = sub.add_parser("list-users", help="list users in a household")
     l.add_argument("--household", type=int, default=None, help="household id (default 1)")

@@ -20,7 +20,7 @@ def test_data_routes_require_auth(anon_client) :
 
 def test_bad_credentials_rejected(anon_client) :
     import auth
-    auth.create_user("a@home", "rightpass", role="admin", household_id=1)
+    auth.create_user("a@home", "rightpass1", role="admin", household_id=1)
     assert anon_client.post("/auth/login", json={"email": "a@home", "password": "nope"}).status_code == 401
     assert anon_client.post("/auth/login", json={"email": "ghost@home", "password": "x"}).status_code == 401
 
@@ -36,8 +36,8 @@ def test_login_me_logout(client) :
 # --- multi-tenant isolation ------------------------------------------------
 
 def test_two_households_are_isolated() :
-    h1 = make_client("one@home", "pw123456", role="admin", household_id=1)
-    h2 = make_client("two@home", "pw123456", role="admin", household_id=2)
+    h1 = make_client("one@home", "pw12345678", role="admin", household_id=1)
+    h2 = make_client("two@home", "pw12345678", role="admin", household_id=2)
 
     h1.post("/foods", json={"name": "eggs"})
     h1.post("/inventory/add", json={"name": "eggs", "amount": 5})
@@ -61,10 +61,10 @@ def test_two_households_are_isolated() :
 # --- admin gate ------------------------------------------------------------
 
 def test_only_admin_can_create_users() :
-    member = make_client("m@home", "pw123456", role="member", household_id=1)
-    assert member.post("/auth/users", json={"email": "x@home", "password": "pw123456"}).status_code == 403
+    member = make_client("m@home", "pw12345678", role="member", household_id=1)
+    assert member.post("/auth/users", json={"email": "x@home", "password": "pw12345678"}).status_code == 403
 
-    admin = make_client("adm@home", "pw123456", role="admin", household_id=1)
-    assert admin.post("/auth/users", json={"email": "kid@home", "password": "pw123456"}).status_code == 200
+    admin = make_client("adm@home", "pw12345678", role="admin", household_id=1)
+    assert admin.post("/auth/users", json={"email": "kid@home", "password": "pw12345678"}).status_code == 200
     emails = {u["email"] for u in admin.get("/auth/users").json()}
     assert {"m@home", "adm@home", "kid@home"} <= emails
