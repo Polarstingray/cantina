@@ -16,19 +16,54 @@
 // from a different port.
 const BASE_URL = "";
 
+// Optional hook: app.js sets this so any 401 (expired/no session) flips the UI
+// back to the login screen instead of just erroring in the status banner.
+let onUnauthorized = null;
+export function setUnauthorizedHandler(fn) { onUnauthorized = fn; }
+
 // Tiny fetch wrapper: builds the URL, sends JSON, parses JSON, throws on !ok.
+// credentials:"same-origin" sends the session cookie (same origin as the API).
 async function request(path, options = {}) {
     const res = await fetch(BASE_URL + path, {
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         ...options,
     });
     if (!res.ok) {
         // Backend sends { detail: "..." } on HTTPException; surface it.
         let detail = res.statusText;
         try { detail = (await res.json()).detail ?? detail; } catch { /* no body */ }
-        throw new Error(`${res.status}: ${detail}`);
+        if (res.status === 401 && onUnauthorized) onUnauthorized();
+        const err = new Error(`${res.status}: ${detail}`);
+        err.status = res.status;
+        throw err;
     }
     return res.json();
+}
+
+// --- auth ------------------------------------------------------------------
+
+// POST /auth/login -> {ok, user:{email, role}}  (sets the session cookie)
+export function login(email, password) {
+    return request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+}
+
+// POST /auth/logout (clears the session cookie)
+export function logout() {
+    return request("/auth/logout", { method: "POST" });
+}
+
+// GET /auth/me -> {email, role, household_id}  (401 if not logged in)
+export function me() {
+    return request("/auth/me");
+}
+
+// GET /auth/users (admin) / POST /auth/users (admin) body: {email, password, role}
+export function listUsers() {
+    return request("/auth/users");
+}
+export function addUser(user) {
+    return request("/auth/users", { method: "POST", body: JSON.stringify(user) });
 }
 
 // --- catalog: foods --------------------------------------------------------

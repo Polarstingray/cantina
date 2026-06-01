@@ -14,7 +14,7 @@ grocery.py
 import json
 from foods import *
 from config import data_path
-from db import get_conn, HOUSEHOLD_ID, insert_food, insert_meal
+from db import get_conn, current_household_id, insert_food, insert_meal
 
 # Catalog "token": still passed around by callers (api.py, menu.py) as the db
 # handle. Storage is SQLite now, so the value is only an identifier.
@@ -32,7 +32,7 @@ def read_json_from_bin(db=FOOD_AND_MEALS) :
             '''SELECT name, stores, cost, cals, carbs, protein, fat, descr, pic,
                       brand, serving_size, barcode, fiber, sugar, sodium
                FROM foods WHERE household_id = ? ORDER BY id''',
-            (HOUSEHOLD_ID,)).fetchall()
+            (current_household_id(),)).fetchall()
         catalog = []
         for r in rows :
             # Rebuild a Food and re-serialize so the dict shape matches exactly
@@ -46,7 +46,7 @@ def read_json_from_bin(db=FOOD_AND_MEALS) :
 
         meals = conn.execute(
             "SELECT id, name, descr, pic FROM meals WHERE household_id = ? ORDER BY id",
-            (HOUSEHOLD_ID,)).fetchall()
+            (current_household_id(),)).fetchall()
         for m in meals :
             ing = conn.execute(
                 "SELECT food_name, amount FROM meal_ingredients WHERE meal_id = ? ORDER BY rowid",
@@ -63,20 +63,21 @@ def read_json_from_bin(db=FOOD_AND_MEALS) :
 
 def write_json_to_bin(json_list, db=FOOD_AND_MEALS) :
     '''Replace the whole catalog with `json_list` (a list of food/meal dicts).'''
+    hid = current_household_id()
     with get_conn() as conn :
         conn.execute(
             "DELETE FROM meal_ingredients WHERE meal_id IN "
-            "(SELECT id FROM meals WHERE household_id = ?)", (HOUSEHOLD_ID,))
-        conn.execute("DELETE FROM meals WHERE household_id = ?", (HOUSEHOLD_ID,))
-        conn.execute("DELETE FROM foods WHERE household_id = ?", (HOUSEHOLD_ID,))
+            "(SELECT id FROM meals WHERE household_id = ?)", (hid,))
+        conn.execute("DELETE FROM meals WHERE household_id = ?", (hid,))
+        conn.execute("DELETE FROM foods WHERE household_id = ?", (hid,))
         for obj in json_list :
             if obj.get("type") == "food" :
                 food = Food.create(obj)
                 if food :
-                    insert_food(conn, food)
+                    insert_food(conn, food, hid)
             elif obj.get("type") == "meal" and obj.get("name") :
                 insert_meal(conn, obj.get("name"), obj.get("desc") or "",
-                            obj.get("pic"), obj.get("foods") or {})
+                            obj.get("pic"), obj.get("foods") or {}, hid)
 
 
 # Rebuild Food and Meal objects from the json list. Foods are built first so

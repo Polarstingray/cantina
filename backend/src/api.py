@@ -12,11 +12,12 @@ api.py
 import os
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 import config
+import auth
 from foods import Food, Meal
 from grocery import read_json_from_bin, FOOD_AND_MEALS, jsons_to_objects, add_to_bin, remove_from_bin
 import inventory
@@ -26,6 +27,12 @@ import lookup
 import spending
 
 app = FastAPI(title="Cantina")
+
+# Every data route requires a logged-in user. The dependency also scopes the
+# request to that user's household (see auth.get_current_user), so the handlers
+# below need no auth/household code of their own. Auth + static routes stay on
+# `app` so login itself isn't gated.
+router = APIRouter(dependencies=[Depends(auth.get_current_user)])
 
 
 # --- request bodies --------------------------------------------------------
@@ -112,12 +119,12 @@ def _catalog() :
 
 # --- catalog ---------------------------------------------------------------
 
-@app.get("/foods")
+@router.get("/foods")
 def list_foods() :
     foods, _ = _catalog()
     return [f.to_json() for f in foods]
 
-@app.get("/meals")
+@router.get("/meals")
 def list_meals() :
     # Return raw catalog rows (not rebuilt Meal objects) so the frontend can
     # see ingredient names that no longer exist in the food catalog and warn
@@ -125,7 +132,7 @@ def list_meals() :
     return [obj for obj in read_json_from_bin(FOOD_AND_MEALS)
             if obj.get("type") == "meal"]
 
-@app.post("/foods")
+@router.post("/foods")
 def add_food(food: FoodIn) :
     f = Food(food.name, food.stores, food.cost, food.cals,
              food.carbs, food.protein, food.fat, food.desc,
@@ -137,7 +144,7 @@ def add_food(food: FoodIn) :
 # PUT is semantically "replace this named food" -- add_to_bin already
 # deduplicates by name, so the implementation is the same as POST. Kept
 # separate so the UI can express edit-vs-create intent.
-@app.put("/foods/{name}")
+@router.put("/foods/{name}")
 def update_food(name: str, food: FoodIn) :
     if name != food.name :
         raise HTTPException(status_code=400, detail="path name and body name must match")
@@ -150,7 +157,7 @@ def update_food(name: str, food: FoodIn) :
 
 # Proxy + transform: barcode -> FoodIn-shaped dict (or 404). The frontend
 # uses this to prefill the add-food form; saving the food is a separate POST/PUT.
-@app.get("/lookup/barcode/{code}")
+@router.get("/lookup/barcode/{code}")
 def lookup_barcode(code: str) :
     if not code.isdigit() or len(code) > 32 :
         raise HTTPException(status_code=400, detail="barcode must be digits, <=32 chars")
@@ -159,13 +166,13 @@ def lookup_barcode(code: str) :
         raise HTTPException(status_code=404, detail=f"no product found for barcode '{code}'")
     return result
 
-@app.get("/catalog/uses/{food_name}")
+@router.get("/catalog/uses/{food_name}")
 def food_uses(food_name: str) :
     # Meals (by name) that reference this food in their ingredient map.
     return [obj["name"] for obj in read_json_from_bin(FOOD_AND_MEALS)
             if obj.get("type") == "meal" and food_name in (obj.get("foods") or {})]
 
-@app.post("/meals")
+@router.post("/meals")
 def add_meal(meal: MealIn) :
     foods_by_name = {f.name : f for f in _catalog()[0]}
     ingredients = {}
@@ -177,14 +184,14 @@ def add_meal(meal: MealIn) :
     add_to_bin(m.to_json())
     return {"ok" : True}
 
-@app.delete("/foods/{name}")
+@router.delete("/foods/{name}")
 def delete_food(name: str) :
     if remove_from_bin(name, kind="food") != 0 :
         raise HTTPException(status_code=404, detail=f"unknown food '{name}'")
     inventory.drop(name, kind="food")
     return {"ok" : True}
 
-@app.delete("/meals/{name}")
+@router.delete("/meals/{name}")
 def delete_meal(name: str) :
     if remove_from_bin(name, kind="meal") != 0 :
         raise HTTPException(status_code=404, detail=f"unknown meal '{name}'")
@@ -194,11 +201,11 @@ def delete_meal(name: str) :
 
 # --- inventory -------------------------------------------------------------
 
-@app.get("/inventory")
+@router.get("/inventory")
 def get_inventory() :
     return inventory.read_inventory()
 
-@app.post("/inventory/add")
+@router.post("/inventory/add")
 def add_stock(stock: StockIn) :
     # Stocking an unknown food creates a minimal catalog entry so the rest of
     # the app sees one name system (matches the grocery-list add behavior).
@@ -208,7 +215,7 @@ def add_stock(stock: StockIn) :
         raise HTTPException(status_code=400, detail="invalid amount")
     return {"ok" : True}
 
-@app.post("/inventory/remove")
+@router.post("/inventory/remove")
 def remove_stock(stock: StockIn) :
     if inventory.remove_stock(stock.name, stock.amount, stock.kind) != 0 :
         raise HTTPException(status_code=400, detail="not enough on hand")
@@ -217,12 +224,12 @@ def remove_stock(stock: StockIn) :
 
 # --- menu ------------------------------------------------------------------
 
-@app.get("/menu")
+@router.get("/menu")
 def get_menu() :
     return menu.menu()
 
 # Spend a meal's ingredients from inventory (the "cart" action).
-@app.post("/menu/make/{meal_name}")
+@router.post("/menu/make/{meal_name}")
 def make_meal(meal_name: str) :
     _, meals = _catalog()
     target = next((m for m in meals if m.name == meal_name), None)
@@ -235,30 +242,30 @@ def make_meal(meal_name: str) :
 
 # --- grocery / shopping list ----------------------------------------------
 
-@app.get("/list")
+@router.get("/list")
 def get_list() :
     return shopping.read_list()
 
-@app.post("/list/add")
+@router.post("/list/add")
 def list_add(item: ListItemIn) :
     if shopping.add(item.name, item.amount) != 0 :
         raise HTTPException(status_code=400, detail="invalid amount")
     return {"ok" : True}
 
-@app.post("/list/remove")
+@router.post("/list/remove")
 def list_remove(item: ListItemIn) :
     if shopping.remove(item.name, item.amount) != 0 :
         raise HTTPException(status_code=400, detail="not enough on the list")
     return {"ok" : True}
 
-@app.post("/list/check")
+@router.post("/list/check")
 def list_check(body: CheckOffIn) :
     moved = shopping.check_off(body.name, body.to_inventory)
     if moved < 0 :
         raise HTTPException(status_code=404, detail=f"'{body.name}' not on the list")
     return {"moved" : moved}
 
-@app.post("/list/clear")
+@router.post("/list/clear")
 def list_clear() :
     shopping.clear()
     return {"ok" : True}
@@ -266,22 +273,22 @@ def list_clear() :
 
 # --- spending log ----------------------------------------------------------
 
-@app.get("/spending")
+@router.get("/spending")
 def get_spending(since: str | None = None, until: str | None = None) :
     return spending.read_entries(since=since, until=until)
 
-@app.get("/spending/totals")
+@router.get("/spending/totals")
 def get_spending_totals(bucket: Literal["week", "month"] = "week") :
     return spending.totals_by_week() if bucket == "week" else spending.totals_by_month()
 
-@app.post("/spending")
+@router.post("/spending")
 def post_spending(body: PurchaseIn) :
     entry = spending.add_entry(body.name, body.qty, body.unit_cost, body.source)
     if entry is None :
         raise HTTPException(status_code=400, detail="qty must be > 0, unit_cost >= 0")
     return entry
 
-@app.delete("/spending/{entry_id}")
+@router.delete("/spending/{entry_id}")
 def delete_spending(entry_id: int) :
     if spending.delete_entry(entry_id) != 0 :
         raise HTTPException(status_code=404, detail=f"no spending entry id={entry_id}")
@@ -289,20 +296,69 @@ def delete_spending(entry_id: int) :
 
 # Sugar endpoints so the frontend doesn't have to remember which "source"
 # string to send when logging a purchase that came from one of the flows.
-@app.post("/spending/from-checkoff")
+@router.post("/spending/from-checkoff")
 def post_spending_from_checkoff(body: PurchaseIn) :
     body.source = "checkoff"
     return post_spending(body)
 
-@app.post("/spending/from-stock-add")
+@router.post("/spending/from-stock-add")
 def post_spending_from_stock_add(body: PurchaseIn) :
     body.source = "stock"
     return post_spending(body)
 
 
+# --- auth -------------------------------------------------------------------
+# These stay on `app` (not the gated router): login/logout must work without a
+# session, and /auth/me, /auth/users carry their own dependency.
+
+class LoginIn(BaseModel) :
+    email: str
+    password: str
+
+class NewUserIn(BaseModel) :
+    email: str
+    password: Annotated[str, Field(min_length=6, max_length=200)]
+    role: Literal["admin", "member"] = "member"
+
+
+@app.post("/auth/login")
+def login(body: LoginIn, response: Response) :
+    user = auth.get_user_by_email(body.email)
+    if not user or not auth.verify_password(body.password, user["password_hash"]) :
+        raise HTTPException(status_code=401, detail="invalid email or password")
+    auth.set_session_cookie(response, auth.create_session(user["id"]))
+    return {"ok": True, "user": {"email": user["email"], "role": user["role"]}}
+
+@app.post("/auth/logout")
+def logout(request: Request, response: Response) :
+    auth.delete_session(request.cookies.get(auth.SESSION_COOKIE))
+    auth.clear_session_cookie(response)
+    return {"ok": True}
+
+@app.get("/auth/me")
+async def whoami(user=Depends(auth.get_current_user)) :
+    return {"email": user["email"], "role": user["role"], "household_id": user["household_id"]}
+
+@app.get("/auth/users")
+async def get_users(admin=Depends(auth.require_admin)) :
+    return auth.list_users(admin["household_id"])
+
+@app.post("/auth/users")
+async def post_user(body: NewUserIn, admin=Depends(auth.require_admin)) :
+    # New members join the admin's household.
+    try :
+        uid = auth.create_user(body.email, body.password, body.role, admin["household_id"])
+    except ValueError as e :
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "id": uid}
+
+
 # --- static frontend -------------------------------------------------------
-# Mount LAST so the API routes above still match first. html=True serves
-# index.html at "/" and any unknown path falls back to it as well.
+# Register the gated data routes, then mount the static frontend LAST so the
+# API routes above still match first. html=True serves index.html at "/" and
+# any unknown path falls back to it as well.
+app.include_router(router)
+
 FRONTEND_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 

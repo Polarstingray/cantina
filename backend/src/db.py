@@ -16,6 +16,7 @@ db.py
     which lifts the old "one uvicorn worker only" constraint of the file backend.
 '''
 
+import contextvars
 import json
 import sqlite3
 import threading
@@ -25,8 +26,21 @@ import config
 
 DB_PATH = config.data_path("cantina.db")
 
-# The single household everything is scoped to until Phase 2 introduces accounts.
+# The default household. Seeded data and the legacy import live here; it is also
+# the fallback when no request has scoped a household (CLI tools, tests).
 HOUSEHOLD_ID = 1
+
+# Request-scoped current household. The auth dependency sets this per request
+# (see auth.get_current_user); every data query reads current_household_id() so
+# one household's rows are never visible to another. ContextVars are isolated
+# per asyncio task / per worker-thread context, so this is concurrency-safe.
+_current_household = contextvars.ContextVar("current_household", default=HOUSEHOLD_ID)
+
+def current_household_id() :
+    return _current_household.get()
+
+def set_current_household(household_id) :
+    _current_household.set(household_id)
 
 
 SCHEMA = '''
@@ -39,6 +53,24 @@ CREATE TABLE IF NOT EXISTS households (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT NOT NULL DEFAULT 'home',
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    household_id  INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+    email         TEXT    NOT NULL UNIQUE,
+    password_hash TEXT    NOT NULL,
+    role          TEXT    NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+    created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+-- Server-side sessions: a random opaque token in an httponly cookie maps to a
+-- user. Revocable (delete the row) and carries no secret, unlike a signed JWT.
+CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT    PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    expires_at TEXT    NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS foods (
@@ -96,15 +128,18 @@ CREATE TABLE IF NOT EXISTS shopping (
     PRIMARY KEY (household_id, name)
 );
 
+-- id is per-household (add_entry assigns max+1 within the household), so the
+-- primary key is composite. Two households can both have a spending entry id=1.
 CREATE TABLE IF NOT EXISTS spending (
-    id           INTEGER PRIMARY KEY,
     household_id INTEGER NOT NULL DEFAULT 1 REFERENCES households(id) ON DELETE CASCADE,
+    id           INTEGER NOT NULL,
     ts           TEXT    NOT NULL,
     name         TEXT    NOT NULL,
     qty          REAL    NOT NULL,
     unit_cost    REAL    NOT NULL,
     total        REAL    NOT NULL,
-    source       TEXT    NOT NULL
+    source       TEXT    NOT NULL,
+    PRIMARY KEY (household_id, id)
 );
 '''
 

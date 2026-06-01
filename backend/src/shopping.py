@@ -11,7 +11,7 @@ shopping.py
 from grocery import read_json_from_bin, FOOD_AND_MEALS, jsons_to_objects, add_to_bin
 from foods import Food
 from config import data_path
-from db import get_conn, HOUSEHOLD_ID
+from db import get_conn, current_household_id
 import inventory
 
 SHOPPING = data_path("shopping.bin")
@@ -24,16 +24,17 @@ def read_list(db=SHOPPING) :
     with get_conn() as conn :
         rows = conn.execute(
             "SELECT name, amount FROM shopping WHERE household_id = ?",
-            (HOUSEHOLD_ID,)).fetchall()
+            (current_household_id(),)).fetchall()
     return {r["name"] : r["amount"] for r in rows}
 
 def write_list(list_, db=SHOPPING) :
+    hid = current_household_id()
     with get_conn() as conn :
-        conn.execute("DELETE FROM shopping WHERE household_id = ?", (HOUSEHOLD_ID,))
+        conn.execute("DELETE FROM shopping WHERE household_id = ?", (hid,))
         for name, amount in list_.items() :
             conn.execute(
                 "INSERT INTO shopping (household_id, name, amount) VALUES (?, ?, ?)",
-                (HOUSEHOLD_ID, name, float(amount)))
+                (hid, name, float(amount)))
 
 
 # --- auto-stub -------------------------------------------------------------

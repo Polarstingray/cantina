@@ -13,7 +13,7 @@ inventory.py
 
 from grocery import read_json_from_bin, FOOD_AND_MEALS, jsons_to_objects
 from config import data_path
-from db import get_conn, HOUSEHOLD_ID
+from db import get_conn, current_household_id
 
 INVENTORY = data_path("inventory.bin")
 
@@ -33,20 +33,21 @@ def read_inventory(db=INVENTORY) :
     with get_conn() as conn :
         rows = conn.execute(
             "SELECT kind, name, qty FROM inventory WHERE household_id = ?",
-            (HOUSEHOLD_ID,)).fetchall()
+            (current_household_id(),)).fetchall()
     for r in rows :
         inv["foods" if r["kind"] == "food" else "meals"][r["name"]] = r["qty"]
     return inv
 
 def write_inventory(inv, db=INVENTORY) :
+    hid = current_household_id()
     with get_conn() as conn :
-        conn.execute("DELETE FROM inventory WHERE household_id = ?", (HOUSEHOLD_ID,))
+        conn.execute("DELETE FROM inventory WHERE household_id = ?", (hid,))
         for kind, section in (("food", inv.get("foods") or {}),
                               ("meal", inv.get("meals") or {})) :
             for name, qty in section.items() :
                 conn.execute(
                     "INSERT INTO inventory (household_id, kind, name, qty) VALUES (?, ?, ?, ?)",
-                    (HOUSEHOLD_ID, kind, name, float(qty)))
+                    (hid, kind, name, float(qty)))
 
 
 # --- queries ---------------------------------------------------------------

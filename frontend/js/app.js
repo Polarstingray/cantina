@@ -1407,6 +1407,50 @@ function renderCurrentRoute() {
 }
 
 // ===========================================================================
+// auth
+// ===========================================================================
+
+function showApp(user) {
+    document.body.classList.remove("logged-out");
+    const ua = $("user-area");
+    if (ua) ua.hidden = false;
+    const ue = $("user-email");
+    if (ue) ue.textContent = user?.email || "";
+}
+
+function showLogin() {
+    document.body.classList.add("logged-out");
+    const ua = $("user-area");
+    if (ua) ua.hidden = true;
+}
+
+async function onLogin(e) {
+    e.preventDefault();
+    const form = e.target;
+    const email = form.elements.email.value.trim();
+    const password = form.elements.password.value;
+    const errEl = $("login-error");
+    errEl.hidden = true;
+    try {
+        const { user } = await api.login(email, password);
+        form.reset();
+        showApp(user);
+        await loadAll();
+        renderCurrentRoute();
+    } catch (err) {
+        errEl.textContent = err.status === 401
+            ? "Invalid email or password."
+            : `Sign-in failed: ${err.message}`;
+        errEl.hidden = false;
+    }
+}
+
+async function onLogout() {
+    try { await api.logout(); } catch { /* clearing the cookie is best-effort */ }
+    showLogin();
+}
+
+// ===========================================================================
 // bootstrap
 // ===========================================================================
 
@@ -1474,7 +1518,20 @@ function wireDashboardForms() {
 
 document.addEventListener("DOMContentLoaded", async () => {
     wireDashboardForms();
+    $("login-form").addEventListener("submit", onLogin);
+    $("logout-btn").addEventListener("click", onLogout);
+    // Any 401 from a later request (expired session) flips back to the login screen.
+    api.setUnauthorizedHandler(showLogin);
     window.addEventListener("hashchange", renderCurrentRoute);
-    await loadAll();
-    renderCurrentRoute();
+
+    // Gate on auth: only pull data if there's a live session.
+    try {
+        const user = await api.me();
+        showApp(user);
+        await loadAll();
+        renderCurrentRoute();
+    } catch (err) {
+        if (err.status === 401) showLogin();
+        else setStatus(`Could not reach the backend: ${err.message}. Is uvicorn running?`);
+    }
 });

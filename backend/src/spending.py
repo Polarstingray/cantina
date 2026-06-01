@@ -12,7 +12,7 @@ spending.py
 from datetime import datetime, timezone, timedelta
 
 from config import data_path
-from db import get_conn, HOUSEHOLD_ID
+from db import get_conn, current_household_id
 
 SPENDING = data_path("spending.bin")
 ALLOWED_SOURCES = ("checkoff", "stock", "manual")
@@ -28,18 +28,19 @@ def read_entries_raw(db=SPENDING) :
         rows = conn.execute(
             "SELECT id, ts, name, qty, unit_cost, total, source "
             "FROM spending WHERE household_id = ? ORDER BY id",
-            (HOUSEHOLD_ID,)).fetchall()
+            (current_household_id(),)).fetchall()
     return [dict(r) for r in rows]
 
 def _write(entries, db=SPENDING) :
+    hid = current_household_id()
     with get_conn() as conn :
-        conn.execute("DELETE FROM spending WHERE household_id = ?", (HOUSEHOLD_ID,))
+        conn.execute("DELETE FROM spending WHERE household_id = ?", (hid,))
         for e in entries :
             conn.execute(
                 "INSERT INTO spending "
                 "(id, household_id, ts, name, qty, unit_cost, total, source) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (e.get("id"), HOUSEHOLD_ID, e.get("ts"), e.get("name"),
+                (e.get("id"), hid, e.get("ts"), e.get("name"),
                  float(e.get("qty", 0)), float(e.get("unit_cost", 0)),
                  float(e.get("total", 0)), e.get("source", "manual")))
 

@@ -23,6 +23,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import db  # noqa: E402
+import auth  # noqa: E402
 import api  # noqa: E402  (must come after the env + path setup above)
 
 
@@ -37,6 +38,22 @@ def clean_data_dir() :
     yield
 
 
+def make_client(email, password, role="admin", household_id=1) :
+    '''A TestClient logged in as a freshly created user (cookies persist on it).'''
+    auth.create_user(email, password, role=role, household_id=household_id)
+    c = TestClient(api.app)
+    assert c.post("/auth/login", json={"email": email, "password": password}).status_code == 200
+    return c
+
+
+@pytest.fixture
+def anon_client() :
+    '''An unauthenticated client (for testing the 401 gate).'''
+    return TestClient(api.app)
+
+
 @pytest.fixture
 def client() :
-    return TestClient(api.app)
+    '''Authenticated admin in the default household. The data-behavior tests run
+    through this so they exercise the same routes the app serves.'''
+    return make_client("test@home", "testpass", role="admin", household_id=1)
