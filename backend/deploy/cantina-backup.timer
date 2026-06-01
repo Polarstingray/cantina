@@ -1,0 +1,11 @@
+# Daily schedule for cantina-backup.service. See that file for install steps.
+[Unit]
+Description=Daily cantina data backup
+
+[Timer]
+OnCalendar=daily
+# Run on next boot if the machine was off at the scheduled time.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

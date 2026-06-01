@@ -3,8 +3,9 @@ api.py
     rough FastAPI scaffold exposing the catalog, inventory, and menu over HTTP
     so the LAN frontend can talk to the backend.
 
-    setup:  pip install fastapi uvicorn
-    run:    uvicorn api:app --reload --host 0.0.0.0 --port 8000
+    setup:  pip install -r ../requirements.txt
+    run:    python api.py                       (honors CANTINA_HOST / CANTINA_PORT)
+        or  uvicorn api:app --host 0.0.0.0 --port 8000
             (--host 0.0.0.0 makes it reachable from other devices on the LAN)
 '''
 
@@ -15,6 +16,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
+import config
 from foods import Food, Meal
 from grocery import read_json_from_bin, FOOD_AND_MEALS, jsons_to_objects, add_to_bin, remove_from_bin
 import inventory
@@ -303,3 +305,10 @@ def post_spending_from_stock_add(body: PurchaseIn) :
 # index.html at "/" and any unknown path falls back to it as well.
 FRONTEND_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+
+
+# Run the server honoring CANTINA_HOST / CANTINA_PORT (see config.py). Lets a
+# deploy override host/port via the environment instead of CLI flags.
+if __name__ == "__main__" :
+    import uvicorn
+    uvicorn.run(app, host=config.HOST, port=config.PORT)

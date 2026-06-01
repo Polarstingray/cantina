@@ -11,10 +11,10 @@ inventory.py
     (see menu.py), which is computed from the food counts.
 '''
 
-import os
 from grocery import read_json_from_bin, write_json_to_bin, FOOD_AND_MEALS, jsons_to_objects
+from config import data_path
 
-INVENTORY = os.path.join(os.path.dirname(__file__), "inventory.bin")
+INVENTORY = data_path("inventory.bin")
 
 
 # maps a catalog "type" ("food"/"meal") to its inventory section key

@@ -9,12 +9,12 @@ spending.py
     Same persistence pattern as inventory.py and shopping.py.
 '''
 
-import os
 from datetime import datetime, timezone, timedelta
 
 from grocery import read_json_from_bin, write_json_to_bin
+from config import data_path
 
-SPENDING = os.path.join(os.path.dirname(__file__), "spending.bin")
+SPENDING = data_path("spending.bin")
 ALLOWED_SOURCES = ("checkoff", "stock", "manual")
 
 

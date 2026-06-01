@@ -1,0 +1,15 @@
+# Oneshot backup of the cantina data dir. Pair with cantina-backup.timer for a
+# daily schedule. Install as a user unit:
+#   cp cantina-backup.{service,timer} ~/.config/systemd/user/
+#   systemctl --user enable --now cantina-backup.timer
+#
+# Keep CANTINA_DATA_DIR in sync with the value used by cantina.service so both
+# point at the same data.
+[Unit]
+Description=Cantina data backup
+
+[Service]
+Type=oneshot
+Environment=CANTINA_DATA_DIR=/home/penguin/projects/cantina/backend/src
+Environment=CANTINA_BACKUP_DIR=%h/cantina-backups
+ExecStart=/home/penguin/projects/cantina/backend/deploy/backup.sh

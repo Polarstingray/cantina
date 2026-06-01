@@ -8,15 +8,15 @@ shopping.py
     minimal Food(name) entry so the rest of the app has one name system.
 '''
 
-import os
 from grocery import (
     read_json_from_bin, write_json_to_bin, FOOD_AND_MEALS,
     jsons_to_objects, add_to_bin,
 )
 from foods import Food
+from config import data_path
 import inventory
 
-SHOPPING = os.path.join(os.path.dirname(__file__), "shopping.bin")
+SHOPPING = data_path("shopping.bin")
 
 
 # --- persistence -----------------------------------------------------------

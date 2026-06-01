@@ -11,7 +11,8 @@ import json
 import shutil
 import threading
 from foods import *
-FOOD_AND_MEALS=os.path.join(os.path.dirname(__file__), "data.bin")
+from config import data_path
+FOOD_AND_MEALS = data_path("data.bin")
 
 # One lock per file path, shared by read + write so we never observe a torn
 # state from another worker thread. The single-uvicorn-worker assumption
