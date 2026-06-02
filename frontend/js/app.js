@@ -23,11 +23,13 @@ const state = {
     list: {},
 };
 
-// One-shot flag: when a scan-to-stock lands on an unknown barcode, we route
-// the user through the add-food prefill flow. After they Save the new food,
-// this flag triggers a follow-up `addStock(name, 1, "food")` so the scanning
-// gesture ends up actually stocking the thing. Cleared after the follow-up.
-let pendingStockOnSave = false;
+// One-shot flag: when a scan lands on an unknown barcode, we route the user
+// through the add-food prefill flow. After they Save the new food, this triggers
+// a follow-up `addStock(name, 1, "food")` so the scanning gesture ends up
+// actually stocking the thing -- and, if the scan was a "Scan a purchase",
+// also logs a $cost spending entry. Holds {purchase: bool} or null; cleared
+// after the follow-up.
+let pendingStockOnSave = null;
 
 // ===========================================================================
 // helpers
@@ -382,20 +384,26 @@ async function startScannerModal(onCode) {
     setTimeout(tick, 500);    // small delay so the video has a frame
 }
 
-// Scan-to-stock entry point used by the inventory page's Scan button.
-async function onScanToStock() {
+// Scan entry point for the inventory page's two Scan buttons.
+//   purchase=false ("Scan to stock")    -> add to inventory only
+//   purchase=true  ("Scan a purchase")  -> add to inventory AND log spending
+// For a known item we open the stock panel (the purchase box reflects `purchase`);
+// for an unknown item we detour through add-food and carry the intent to save.
+async function onScanToStock(purchase = false) {
     if (!cameraAvailable()) {
         return setStatus("This page needs HTTPS to access the camera. Type the name in the Stock form below instead.");
     }
+    const verb = purchase ? "purchase" : "stock";
     await startScannerModal(async (code) => {
         // Match by stored barcode on existing catalog foods first.
         const match = state.foods.find((f) => (f.barcode || "") === code);
         if (match) {
-            openStockPanel(match.name);
-            setStatus(`Scanned "${match.name}" — pick amount and confirm.`, "info");
+            openStockPanel(match.name, { logPurchase: purchase });
+            setStatus(`Scanned "${match.name}" — confirm amount${purchase ? " and $ paid" : ""}.`, "info");
             return;
         }
-        // Not in catalog: route to add-food prefill, then auto-stock 1 on save.
+        // Not in catalog: route to add-food prefill, then auto-stock 1 (and, for
+        // a purchase scan, log spending at the cost entered) on save.
         setStatus(`Scanned unknown barcode ${code} — looking up…`, "info");
         try {
             const result = await api.lookupBarcode(code);
@@ -406,8 +414,8 @@ async function onScanToStock() {
             form.hidden = false;
             form.elements.barcode.value = code;
             prefillAddFoodForm(result);
-            pendingStockOnSave = true;
-            setStatus(`Scanned ${code}: review and Save — it'll be stocked automatically.`, "info");
+            pendingStockOnSave = { purchase };
+            setStatus(`Scanned ${code}: review${purchase ? " (set the $ cost)" : ""} and Save — it'll be ${verb === "purchase" ? "stocked and logged" : "stocked"} automatically.`, "info");
         } catch (err) {
             // Unknown to OpenFoodFacts too -- give them a starting point.
             location.hash = "#/";
@@ -415,21 +423,23 @@ async function onScanToStock() {
             const form = $("add-food-form");
             form.hidden = false;
             form.elements.barcode.value = code;
-            pendingStockOnSave = true;
-            setStatus(`Scanned ${code}: not in food database. Fill the name + macros, Save, and it'll be stocked.`, "info");
+            pendingStockOnSave = { purchase };
+            setStatus(`Scanned ${code}: not in food database. Fill name + macros${purchase ? " + $ cost" : ""}, Save, and it'll be ${verb === "purchase" ? "stocked and logged" : "stocked"}.`, "info");
         }
     });
 }
 
 // Opens the inline Stock-it panel above the inventory rows for `name`.
-// Used by both Scan-to-stock and (later) any other "I want to stock this
-// specific thing" affordance. Idempotent: re-opens cleanly if called twice.
-function openStockPanel(name) {
+// Used by both Scan buttons and any other "I want to stock this specific thing"
+// affordance. `opts.logPurchase` (true/false) forces the "Log as purchase" box;
+// when omitted it defaults to checked iff the catalog has a known cost.
+// Idempotent: re-opens cleanly if called twice.
+function openStockPanel(name, opts = {}) {
     const view = $("view-inventory");
     if (!view || view.hidden) {
         // Nav to inventory page first; the panel is rendered into a slot there.
         location.hash = "#/inventory";
-        setTimeout(() => openStockPanel(name), 50);
+        setTimeout(() => openStockPanel(name, opts), 50);
         return;
     }
     let slot = $("scan-stock-slot");
@@ -462,7 +472,7 @@ function openStockPanel(name) {
         el("div", { class: "purchase-fields" }, [
             el("label", {}, [
                 (logBox = el("input", { type: "checkbox",
-                    checked: catalogCost > 0 })),
+                    checked: opts.logPurchase ?? (catalogCost > 0) })),
                 document.createTextNode(" Log as purchase"),
             ]),
             el("label", {}, [
@@ -896,8 +906,11 @@ function renderInventoryPage() {
 
     const head = [el("h2", { textContent: "Inventory" })];
     if (cameraAvailable()) {
+        // Two intents: stock only, or stock + log the spend (grocery haul).
         head.push(el("button", { class: "ghost", textContent: "Scan to stock",
-            onclick: onScanToStock }));
+            onclick: () => onScanToStock(false) }));
+        head.push(el("button", { class: "ghost", textContent: "Scan a purchase",
+            onclick: () => onScanToStock(true) }));
     }
     view.appendChild(el("section", { class: "detail" }, [
         el("div", { class: "detail-head" }, head),
@@ -1182,13 +1195,26 @@ async function onAddFood(e) {
         await api.addFood(body);
         e.target.reset();
         e.target.hidden = true;
-        // If this Save came from a Scan-to-Stock detour through an unknown
-        // barcode, finish the gesture by stocking 1 of the new food.
+        // If this Save came from a scan detour through an unknown barcode,
+        // finish the gesture by stocking 1 -- and, for a "Scan a purchase",
+        // also log a spending entry at the cost just entered on the form.
         if (pendingStockOnSave) {
-            pendingStockOnSave = false;
+            const wantPurchase = pendingStockOnSave.purchase;
+            pendingStockOnSave = null;
             try {
                 await api.addStock({ name: body.name, amount: 1, kind: "food" });
-                setStatus(`Added food "${body.name}" and stocked 1.`, "info");
+                let msg = `Added food "${body.name}" and stocked 1.`;
+                if (wantPurchase && body.cost > 0) {
+                    try {
+                        await api.logStockPurchase({ name: body.name, qty: 1, unit_cost: body.cost });
+                        msg += ` Logged $${(+body.cost).toFixed(2)} purchase.`;
+                    } catch (err) {
+                        msg += ` (purchase log failed: ${err.message})`;
+                    }
+                } else if (wantPurchase) {
+                    msg += " Set a $ cost to log the purchase.";
+                }
+                setStatus(msg, "info");
             } catch (err) {
                 setStatus(`Added food "${body.name}", but stocking failed: ${err.message}`);
             }
