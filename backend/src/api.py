@@ -81,6 +81,18 @@ async def security_middleware(request: Request, call_next) :
         response.headers.setdefault(key, value)
     if auth.SECURE_COOKIES :     # only meaningful (and safe) once served over HTTPS
         response.headers.setdefault("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+    # Cache policy (Cloudflare is set to respect these origin headers):
+    #   - vendored decoder is version-pinned, effectively immutable -> cache hard
+    #   - API JSON is per-household + auth-gated -> never store it
+    #   - the SPA shell (html/js/css) -> revalidate via etag, so a deploy is
+    #     visible on the next load instead of sitting behind a 4h stale copy
+    path = request.url.path
+    if path.startswith("/js/vendor/") :
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif response.headers.get("content-type", "").startswith("application/json") :
+        response.headers.setdefault("Cache-Control", "no-store")
+    else :
+        response.headers.setdefault("Cache-Control", "no-cache")
     return response
 
 
