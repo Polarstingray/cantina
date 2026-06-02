@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Building Cantina — A Step-by-Step Field Guide</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #161b22;
+    --panel-2: #1c232c;
+    --ink: #e6edf3;
+    --ink-dim: #9aa7b2;
+    --line: #2a3340;
+    --accent: #6cb6ff;
+    --accent-2: #56d364;
+    --code-bg: #0b0f14;
+    --concept: #1f6feb;
+    --pitfall: #d29922;
+    --why: #2ea043;
+    --tryit: #a371f7;
+    --maxw: 820px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+  }
+  /* ---- sidebar / table of contents ---- */
+  #toc {
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    width: 300px;
+    min-width: 300px;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 22px 16px 60px;
+  }
+  #toc h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--ink-dim);
+    margin: 0 0 12px 6px;
+  }
+  #toc a {
+    display: block;
+    color: var(--ink-dim);
+    text-decoration: none;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 14px;
+    border-left: 2px solid transparent;
+  }
+  #toc a.lvl2 { padding-left: 22px; font-size: 13px; }
+  #toc a:hover { color: var(--ink); background: var(--panel-2); }
+  #toc a.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel-2); }
+  #toc .toc-chapter { margin-top: 8px; font-weight: 600; }
+
+  /* ---- main content ---- */
+  main {
+    flex: 1;
+    min-width: 0;
+    padding: 0 48px 120px;
+    max-width: calc(var(--maxw) + 96px);
+    margin: 0 auto;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; }
+  header.hero {
+    padding: 64px 0 28px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 36px;
+  }
+  header.hero h1 { font-size: 38px; line-height: 1.15; margin: 0 0 12px; }
+  header.hero .sub { color: var(--ink-dim); font-size: 19px; margin: 0; }
+  .badges { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .badge {
+    font-size: 12.5px; padding: 3px 10px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-dim);
+  }
+  section.chapter { padding-top: 28px; }
+  h2.chap {
+    font-size: 28px; margin: 48px 0 6px; padding-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+  h2.chap .num {
+    display: inline-block; color: var(--accent); font-size: 15px;
+    letter-spacing: .1em; text-transform: uppercase; margin-bottom: 2px;
+  }
+  h3 { font-size: 20px; margin: 32px 0 8px; }
+  h4 { font-size: 16px; margin: 22px 0 6px; color: var(--ink); }
+  p { margin: 12px 0; }
+  a { color: var(--accent); }
+  code.inline {
+    background: var(--code-bg); border: 1px solid var(--line);
+    padding: 1px 6px; border-radius: 5px; font-size: 13.5px;
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    color: #ffd9a0;
+  }
+  .commit {
+    font-family: ui-monospace, monospace; font-size: 12px;
+    background: #21262d; color: var(--accent-2);
+    padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .commit-line { margin: 4px 0 18px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .commit-line .lbl { color: var(--ink-dim); font-size: 13px; }
+
+  /* ---- code blocks ---- */
+  figure.code { margin: 18px 0; }
+  figure.code figcaption {
+    font-family: ui-monospace, monospace; font-size: 12px; color: var(--ink-dim);
+    background: var(--panel-2); border: 1px solid var(--line); border-bottom: none;
+    padding: 6px 12px; border-radius: 8px 8px 0 0;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  figure.code.no-cap pre { border-radius: 8px; }
+  pre {
+    margin: 0; background: var(--code-bg); border: 1px solid var(--line);
+    border-radius: 0 0 8px 8px; padding: 14px 16px; overflow-x: auto;
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.55; color: #d6dee7;
+    -moz-tab-size: 4; tab-size: 4;
+  }
+  pre .c { color: #6e7d8c; font-style: italic; }  /* comment */
+  pre .k { color: #ff7b72; }                       /* keyword  */
+  pre .s { color: #a5d6ff; }                       /* string   */
+  pre .f { color: #d2a8ff; }                       /* func/def */
+  .copy-btn {
+    background: transparent; border: 1px solid var(--line); color: var(--ink-dim);
+    font-size: 11px; padding: 2px 8px; border-radius: 6px; cursor: pointer;
+  }
+  .copy-btn:hover { color: var(--ink); border-color: var(--accent); }
+
+  /* ---- callout boxes ---- */
+  .box {
+    border-radius: 10px; padding: 14px 16px 14px 18px; margin: 20px 0;
+    border: 1px solid var(--line); border-left-width: 4px; background: var(--panel);
+  }
+  .box .tag {
+    font-weight: 700; font-size: 13px; text-transform: uppercase;
+    letter-spacing: .06em; display: block; margin-bottom: 4px;
+  }
+  .box p:first-of-type { margin-top: 2px; }
+  .box p:last-child { margin-bottom: 0; }
+  .box.concept { border-left-color: var(--concept); }
+  .box.concept .tag { color: #79c0ff; }
+  .box.pitfall { border-left-color: var(--pitfall); background: #21200f; }
+  .box.pitfall .tag { color: #e3b341; }
+  .box.why { border-left-color: var(--why); }
+  .box.why .tag { color: #56d364; }
+  .box.tryit { border-left-color: var(--tryit); background: #1a1626; }
+  .box.tryit .tag { color: #d2a8ff; }
+
+  /* ---- diagram ---- */
+  .diagram {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px; overflow-x: auto;
+    font-family: ui-monospace, monospace; font-size: 12.5px; line-height: 1.5; color: var(--ink-dim);
+    white-space: pre;
+  }
+
+  /* ---- tables ---- */
+  table { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 8px 11px; text-align: left; vertical-align: top; }
+  th { background: var(--panel-2); color: var(--ink); }
+  tr:nth-child(even) td { background: var(--panel); }
+
+  .lead { font-size: 18px; color: var(--ink); }
+  ul, ol { padding-left: 22px; }
+  li { margin: 6px 0; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 40px 0; }
+  .pill { font-size: 12px; color: var(--ink-dim); }
+  .glossary dt { font-weight: 700; margin-top: 14px; color: #ffd9a0; }
+  .glossary dd { margin: 2px 0 0; color: var(--ink-dim); }
+  footer.end { color: var(--ink-dim); font-size: 14px; border-top: 1px solid var(--line); margin-top: 60px; padding-top: 24px; }
+
+  @media (max-width: 900px) {
+    body { flex-direction: column; }
+    #toc { position: relative; width: 100%; min-width: 0; height: auto; max-height: none; border-right: none; border-bottom: 1px solid var(--line); }
+    main { padding: 0 20px 80px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= TABLE OF CONTENTS ================= -->
+<nav id="toc">
+  <h2>Contents</h2>
+  <a href="#intro" class="toc-chapter">Introduction</a>
+  <a href="#stack" class="lvl2">The stack &amp; the map</a>
+  <a href="#setup" class="lvl2">Prerequisites &amp; setup</a>
+  <a href="#how-to-read" class="lvl2">How to read this guide</a>
+
+  <a href="#ch1" class="toc-chapter">1 · The domain model</a>
+  <a href="#ch2" class="toc-chapter">2 · Persistence: pickle→JSON→.bin</a>
+  <a href="#ch3" class="toc-chapter">3 · Inventory, Menu &amp; the API</a>
+  <a href="#ch4" class="toc-chapter">4 · The frontend SPA</a>
+  <a href="#ch5" class="toc-chapter">5 · Barcodes &amp; money</a>
+  <a href="#ch6" class="toc-chapter">6 · Phase 0 — the safety net</a>
+  <a href="#ch7" class="toc-chapter">7 · Phase 1 — SQLite</a>
+  <a href="#ch8" class="toc-chapter">8 · Phase 2 — accounts</a>
+  <a href="#ch9" class="toc-chapter">9 · Phase 2.5 — hardening</a>
+  <a href="#ch10" class="toc-chapter">10 · Run, test, deploy</a>
+  <a href="#ch11" class="toc-chapter">11 · Phase 3 — remote access</a>
+  <a href="#ch12" class="toc-chapter">12 · Pitfalls &amp; lessons</a>
+
+  <a href="#appendix-env" class="toc-chapter">Appendix A · Env vars</a>
+  <a href="#appendix-schema" class="lvl2">Appendix B · Full schema</a>
+  <a href="#glossary" class="lvl2">Appendix C · Glossary</a>
+</nav>
+
+<main>
+<div class="wrap">
+
+<!-- ================= HERO ================= -->
+<header class="hero" id="intro">
+  <h1>Building <em>Cantina</em></h1>
+  <p class="sub">A step-by-step field guide to how a small household grocery &amp; meal tracker was built — from a single Python file to a secure, multi-user web app — and the potholes hit along the way.</p>
+  <div class="badges">
+    <span class="badge">Python 3.12</span>
+    <span class="badge">FastAPI</span>
+    <span class="badge">SQLite</span>
+    <span class="badge">Vanilla JS (no build step)</span>
+    <span class="badge">21 commits</span>
+    <span class="badge">Novice-friendly</span>
+  </div>
+</header>
+
+<p class="lead">Cantina is a web app a family runs on the home network to keep track of the food they own. You catalog <strong>foods</strong> (with cost and nutrition), compose them into <strong>meals</strong> (recipes), track what's on hand in your <strong>inventory</strong>, see which meals you can build right now (the <strong>menu</strong>), keep a shared <strong>grocery list</strong>, and log your <strong>spending</strong>.</p>
+
+<p>That's the finished product. But the interesting part — and the reason this guide exists — is <em>how it got there</em>. The project grew in clear stages, each recorded as a git commit, and each stage taught a lesson the hard way. We're going to walk that whole road in order, replicate the key code, and stop at every pothole to understand what went wrong and how it was fixed. By the end you should be able to build something similar yourself.</p>
+
+<!-- ===== STACK ===== -->
+<h3 id="stack">The stack, and a map of the finished app</h3>
+<p>Three layers talk to each other. A web browser runs the <strong>frontend</strong> (plain HTML/CSS/JavaScript). It sends requests to the <strong>backend</strong> (Python, using a framework called FastAPI). The backend reads and writes a <strong>database</strong> (SQLite, a single file on disk).</p>
+
+<div class="diagram">
+  Browser (the SPA)                Backend (Python / FastAPI)            Storage
+ ┌────────────────────┐  HTTP +   ┌──────────────────────────────┐
+ │  index.html         │  JSON     │  api.py     ← routes/endpoints │
+ │  js/api.js  ────────┼──────────▶│    │  auth.py  (login/sessions)│
+ │  js/app.js          │◀──────────┤    ▼                          │     ┌──────────────┐
+ │  css/styles.css     │           │  grocery / inventory / menu / │────▶│  cantina.db   │
+ └────────────────────┘           │  shopping / spending  (logic)  │     │  (SQLite/WAL) │
+                                   │    │                          │     └──────────────┘
+                                   │    ▼                          │
+                                   │  db.py  ← schema + connections │
+                                   └──────────────────────────────┘
+
+  Data flows in a chain:
+     Foods ─▶ Meals ─▶ Inventory ─▶ Menu (what can I build?)
+                          ▲                │
+                          └── Grocery list ┘ ─▶ Spending log
+</div>
+
+<p>Here is the directory layout you'll end up with. Don't worry about every file yet — we build them one chapter at a time.</p>
+
+<figure class="code no-cap"><pre>cantina/
+├── backend/
+│   ├── requirements.txt          <span class="c"># pinned Python dependencies</span>
+│   ├── pytest.ini
+│   ├── src/
+│   │   ├── foods.py              <span class="c"># Ch.1  Food + Meal classes (the domain model)</span>
+│   │   ├── grocery.py           <span class="c"># Ch.2  the food/meal catalog + storage helpers</span>
+│   │   ├── inventory.py         <span class="c"># Ch.3  what's on hand</span>
+│   │   ├── menu.py              <span class="c"># Ch.3  what can I build right now?</span>
+│   │   ├── shopping.py          <span class="c"># Ch.4  the grocery list</span>
+│   │   ├── spending.py          <span class="c"># Ch.5  money log + weekly totals</span>
+│   │   ├── lookup.py            <span class="c"># Ch.5  barcode → food data (OpenFoodFacts)</span>
+│   │   ├── api.py               <span class="c"># Ch.3+ FastAPI app: all HTTP endpoints</span>
+│   │   ├── config.py            <span class="c"># Ch.6  read settings from the environment</span>
+│   │   ├── db.py                <span class="c"># Ch.7  SQLite schema + connections</span>
+│   │   ├── auth.py              <span class="c"># Ch.8  passwords, sessions, login</span>
+│   │   ├── ratelimit.py         <span class="c"># Ch.9  brute-force throttle</span>
+│   │   └── manage.py            <span class="c"># Ch.8  CLI to create the first admin</span>
+│   ├── tests/                   <span class="c"># Ch.6  pytest characterization tests</span>
+│   └── deploy/                  <span class="c"># Ch.10 systemd unit + backup script; Ch.11 cloudflared/ tunnel config</span>
+└── frontend/
+    ├── index.html              <span class="c"># Ch.4  the page shell + forms</span>
+    ├── js/api.js               <span class="c"># Ch.4  one function per backend endpoint</span>
+    ├── js/app.js               <span class="c"># Ch.4  router, state, rendering</span>
+    └── css/styles.css</pre></figure>
+
+<!-- ===== SETUP ===== -->
+<h3 id="setup">Prerequisites &amp; setup</h3>
+<p>You need <strong>Python 3.12</strong> and a terminal. Everything in the backend uses Python; the frontend is plain files served by the backend, so there's <em>no</em> Node.js, no webpack, no build step. That is a deliberate choice we'll come back to.</p>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — virtual environment (venv)</span>
+  <p>A <em>virtual environment</em> is a private folder of Python packages for one project, so installing FastAPI here doesn't pollute your whole computer (or clash with another project). You create one, "activate" it, and install into it.</p>
+</div>
+
+<figure class="code"><figcaption>terminal — one-time setup</figcaption><pre><span class="c"># from the cantina/backend folder</span>
+python3 -m venv src/venv               <span class="c"># create the venv</span>
+src/venv/bin/pip install -r requirements.txt</pre></figure>
+
+<p>The dependency list is short and <strong>pinned</strong> (exact versions), so the app behaves the same on every machine:</p>
+
+<figure class="code"><figcaption>backend/requirements.txt</figcaption><pre><span class="c"># --- runtime ---</span>
+fastapi==0.136.3
+uvicorn[standard]==0.48.0
+pydantic==2.13.4
+
+<span class="c"># --- tests ---</span>
+pytest==8.3.4
+httpx==0.28.1</pre></figure>
+
+<!-- ===== HOW TO READ ===== -->
+<h3 id="how-to-read">How to read this guide</h3>
+<p>Each chapter follows the same rhythm: the <strong>goal</strong> of that stage, the <strong>code</strong> that achieved it (taken straight from the project), the <strong>pitfall(s)</strong> hit, and <strong>why</strong> the chosen design won. Watch for these coloured boxes:</p>
+<div class="box concept"><span class="tag">💡 Concept</span><p>Plain-English explanation of a piece of jargon, usually with an everyday analogy.</p></div>
+<div class="box pitfall"><span class="tag">⚠️ Pitfall</span><p>A real problem this project ran into — and the fix.</p></div>
+<div class="box why"><span class="tag">✅ Why it matters</span><p>The reasoning behind a design decision.</p></div>
+<div class="box tryit"><span class="tag">🔧 Try it</span><p>A command you can run yourself to see the step working.</p></div>
+
+<p>The chapters map onto the actual commit history, oldest first. You can follow along by checking out each commit, or just read straight through.</p>
+
+
+<!-- ============================================================= -->
+<!-- CHAPTER 1 -->
+<!-- ============================================================= -->
+<section class="chapter" id="ch1">
+<h2 class="chap"><span class="num">Chapter 1</span><br>The idea &amp; the domain model</h2>
+<div class="commit-line">
+  <span class="lbl">commits:</span>
+  <span class="commit">9d9e013</span><span class="commit">ad22293</span><span class="commit">273fb4c</span>
+</div>
+
+<p><strong>Goal:</strong> before any database, any web server, any login — describe the <em>things</em> the app is about. For a grocery tracker, that's two ideas: a <strong>Food</strong> and a <strong>Meal</strong>. Everything else is built on top of these.</p>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — a class</span>
+  <p>A <em>class</em> is a blueprint for a kind of thing. <code class="inline">Food</code> is a blueprint that says "every food has a name, a cost, some macros…". An <em>instance</em> is one real thing made from the blueprint, like an apple. Think recipe card (class) versus the actual cake you bake from it (instance).</p>
+</div>
+
+<p>The first commit created <code class="inline">foods.py</code> with the <code class="inline">Food</code> class. A food carries a name, where to buy it, a cost, nutrition ("macros"), and a description:</p>
+
+<figure class="code"><figcaption>backend/src/foods.py — the Food class (trimmed)</figcaption><pre><span class="k">class</span> <span class="f">Food</span>:
+    <span class="k">def</span> <span class="f">__init__</span>(self, name, stores=None, cost=0.0, cals=0, carbs=0.0,
+                 prot=0.0, fat=0.0, desc="", pic=None,
+                 brand="", serving_size="", barcode="",
+                 fiber=0.0, sugar=0.0, sodium=0.0):
+        self.name = name
+        self.stores = stores
+        self.cost = cost
+        self.cals = cals
+        self.carbs = carbs
+        self.protein = prot
+        self.fat = fat
+        self.desc = desc
+        <span class="c"># ... brand / serving_size / barcode / fiber / sugar / sodium</span></pre></figure>
+
+<h3>The list → dictionary pivot</h3>
+<p>A <code class="inline">Meal</code> is a bundle of foods. The very first version stored its ingredients as a plain <em>list</em>: <code class="inline">[apple, apple, apple, crust]</code>. That works, but it can't express "0.5 cups of flour" cleanly, and counting "how many apples?" means scanning the whole list. The second commit changed the ingredients into a <strong>dictionary</strong> that maps each food to an amount.</p>
+
+<figure class="code"><figcaption>backend/src/foods.py — Meal stores {food: amount}</figcaption><pre><span class="k">class</span> <span class="f">Meal</span>:
+    <span class="k">def</span> <span class="f">__init__</span>(self, name, foods, desc="", pic=None):
+        self.name = name
+        self.desc = desc
+        self.foods = {}                        <span class="c"># {Food: amount}</span>
+        <span class="k">if</span> isinstance(foods, list):
+            self.add_foods(foods)              <span class="c"># tolerate a plain list too</span>
+        <span class="k">elif</span> isinstance(foods, Food):
+            self.foods = {foods: 1}
+        <span class="k">else</span>:
+            self.foods = foods
+
+    <span class="k">def</span> <span class="f">get_price</span>(self):
+        total = 0.0
+        <span class="k">for</span> food, amount <span class="k">in</span> self.foods.items():
+            total += food.cost * amount        <span class="c"># amount can be 0.5, 1.5, ...</span>
+        <span class="k">return</span> total</pre></figure>
+
+<div class="box why">
+  <span class="tag">✅ Why it matters</span>
+  <p>The <code class="inline">{food: amount}</code> shape is the single most important early decision. It supports fractional amounts (half an egg), instant lookup of one ingredient, and totals that are a simple loop. Every later layer — recipes, "what can I build", the database schema — inherits this shape.</p>
+</div>
+
+<h3>Giving objects an identity</h3>
+<p>The third commit added two special methods, <code class="inline">__hash__</code> and <code class="inline">__eq__</code>, keyed on the food's <strong>name</strong>:</p>
+
+<figure class="code"><figcaption>backend/src/foods.py</figcaption><pre>    <span class="k">def</span> <span class="f">__hash__</span>(self):
+        <span class="k">return</span> hash(self.name)
+
+    <span class="k">def</span> <span class="f">__eq__</span>(self, other):
+        <span class="k">return</span> self.name == other.name</pre></figure>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — why __hash__/__eq__?</span>
+  <p>To use an object as a <em>dictionary key</em> (which is exactly what <code class="inline">{food: amount}</code> does), Python needs to know when two objects are "the same" (<code class="inline">__eq__</code>) and how to file them in a lookup table (<code class="inline">__hash__</code>). By keying both on <code class="inline">name</code>, two <code class="inline">Food</code> objects with the same name are treated as one. That's how the catalog enforces "one entry per name" later.</p>
+</div>
+
+<div class="box tryit">
+  <span class="tag">🔧 Try it</span>
+  <p><code class="inline">python backend/src/foods.py</code> — the file has a <code class="inline">main()</code> that builds an apple pie and prints its macros and price. No web server needed; it's just objects.</p>
+</div>
+</section>
+
+
+<!-- ============================================================= -->
+<!-- CHAPTER 2 -->
+<!-- ============================================================= -->
+<section class="chapter" id="ch2">
+<h2 class="chap"><span class="num">Chapter 2</span><br>First persistence: pickle → JSON → <code style="font-size:.8em">.bin</code></h2>
+<div class="commit-line">
+  <span class="lbl">commits:</span>
+  <span class="commit">e1aa9da</span><span class="commit">a8549b3</span><span class="commit">2658470</span><span class="commit">9959fbf</span>
+</div>
+
+<p><strong>Goal:</strong> objects vanish when the program exits. To remember foods between runs we need <strong>persistence</strong> — saving to disk and loading back. This chapter is a great example of trying the obvious thing, learning why it's wrong, and improving in two steps.</p>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — serialization</span>
+  <p>A Python object lives in memory as a web of references. <em>Serialization</em> means flattening it into a stream of bytes you can write to a file; <em>deserialization</em> is rebuilding the object from those bytes. The question of <em>which format</em> to flatten into is the whole story of this chapter.</p>
+</div>
+
+<h3>Attempt 1: pickle (and why it was dropped)</h3>
+<p>Python ships a built-in serializer called <code class="inline">pickle</code>. It's a one-liner, so it was the first thing tried:</p>
+
+<figure class="code"><figcaption>grocery.py @ commit e1aa9da — the pickle version</figcaption><pre><span class="k">import</span> pickle
+
+<span class="k">def</span> <span class="f">write_db</span>(data, db=FOOD_AND_MEALS):
+    <span class="k">with</span> open(db, <span class="s">'wb'</span>) <span class="k">as</span> f:
+        pickle.dump(data, f)
+
+<span class="k">def</span> <span class="f">read_db</span>(db=FOOD_AND_MEALS):
+    <span class="k">with</span> open(db, <span class="s">"rb"</span>) <span class="k">as</span> f:
+        data = pickle.load(f)
+    <span class="k">return</span> data</pre></figure>
+
+<div class="box pitfall">
+  <span class="tag">⚠️ Pitfall — pickle is opaque and unsafe</span>
+  <p>A <code class="inline">.pkl</code> file is unreadable binary — you can't open it to inspect or fix your data. Worse, <strong>loading a pickle can execute arbitrary code</strong>, so it's dangerous to load any file you didn't write yourself. And it locks the data into Python's internal format, making a future move to a real database painful. The fix: serialize to <strong>JSON</strong> instead.</p>
+</div>
+
+<h3>Attempt 2: JSON via factory methods</h3>
+<p>The next commits taught each class to convert itself to and from a plain dictionary. The pattern is a <code class="inline">to_json()</code> method (object → dict) and a <code class="inline">create()</code> <em>factory</em> (dict → object). Crucially, every dict carries a <code class="inline">"type"</code> field so we know whether to rebuild a Food or a Meal:</p>
+
+<figure class="code"><figcaption>backend/src/foods.py — to_json / create</figcaption><pre>    <span class="k">def</span> <span class="f">to_json</span>(self):
+        <span class="k">return</span> {
+            <span class="s">"type"</span>: <span class="s">"food"</span>,
+            <span class="s">"name"</span>: self.name,
+            <span class="s">"stores"</span>: self.stores,
+            <span class="s">"cost"</span>: str(self.cost),
+            <span class="s">"macros"</span>: [str(self.cals), str(self.carbs),
+                       str(self.protein), str(self.fat)],
+            <span class="c"># ... desc, brand, barcode, fiber, sugar, sodium</span>
+        }
+
+    <span class="f">@staticmethod</span>
+    <span class="k">def</span> <span class="f">create</span>(food_json):
+        <span class="k">if</span> food_json.get(<span class="s">"type"</span>) != <span class="s">"food"</span> <span class="k">or</span> <span class="k">not</span> food_json.get(<span class="s">"name"</span>):
+            <span class="k">return</span> None                       <span class="c"># defensive: ignore junk</span>
+        <span class="c"># Pad short/missing macros to 4 entries; tolerate bad strings.</span>
+        <span class="c"># ... rebuild and return a Food(...)</span></pre></figure>
+
+<div class="box why">
+  <span class="tag">✅ Why it matters — the defensive create()</span>
+  <p>Notice <code class="inline">create()</code> returns <code class="inline">None</code> for malformed input and pads missing macros instead of crashing. Real saved data drifts over time (you add a field later; old rows lack it). A forgiving deserializer means an old or hand-edited record loads with sensible defaults rather than taking down the whole app.</p>
+</div>
+
+<h3>Attempt 3: JSON encoded into a <code style="font-size:.85em">.bin</code> file</h3>
+<p>The final step wrote the list of dicts as JSON text, encoded to UTF-8 bytes, into a file named <code class="inline">data.bin</code>:</p>
+
+<figure class="code"><figcaption>grocery.py @ commit 9959fbf</figcaption><pre><span class="k">def</span> <span class="f">write_json_to_bin</span>(json_list, db=FOOD_AND_MEALS):
+    json_str = json.dumps(json_list)
+    <span class="k">with</span> open(db, <span class="s">"wb"</span>) <span class="k">as</span> f:
+        f.write(json_str.encode(<span class="s">'utf-8'</span>))
+
+<span class="k">def</span> <span class="f">read_json_from_bin</span>(db=FOOD_AND_MEALS):
+    <span class="k">with</span> open(db, <span class="s">"rb"</span>) <span class="k">as</span> f:
+        binary = f.read()
+    <span class="k">if</span> <span class="k">not</span> binary:
+        <span class="k">return</span> []
+    <span class="k">return</span> json.loads(binary.decode(<span class="s">'utf-8'</span>))</pre></figure>
+
+<p>The commit message itself spells out the intent: <em>"this will allow for seamless migration into real databases."</em> That foresight pays off in Chapter 7 — because the rest of the app only ever calls <code class="inline">read_json_from_bin</code> / <code class="inline">write_json_to_bin</code>, those two functions become the single seam where we later swap in SQLite without touching anything else.</p>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — a "seam"</span>
+  <p>A <em>seam</em> is a narrow boundary in your code where you can change what's behind it without disturbing what's in front. By funneling all reads/writes through two functions, the project created a seam between "business logic" and "storage." Good seams are what make big changes (like switching databases) safe later.</p>
+</div>
+</section>
+
+
+<!-- ============================================================= -->
+<!-- CHAPTER 3 -->
+<!-- ============================================================= -->
+<section class="chapter" id="ch3">
+<h2 class="chap"><span class="num">Chapter 3</span><br>Inventory, Menu &amp; the FastAPI scaffold</h2>
+<div class="commit-line">
+  <span class="lbl">commits:</span>
+  <span class="commit">d1adc77</span><span class="commit">2b71093</span>
+</div>
+
+<p><strong>Goal:</strong> add two pieces of real logic — tracking what you <em>have</em> (inventory) and computing what you can <em>cook</em> (menu) — then expose everything over the web so a browser can use it.</p>
+
+<h3>Inventory: what's on hand</h3>
+<p>The catalog (Chapter 2) is the <em>library of all foods that exist</em>. Inventory is a separate, smaller thing: <em>how many of each you currently own</em>. It's stored as two name→quantity maps, one for raw foods and one for prepared meals (leftovers):</p>
+
+<figure class="code"><figcaption>backend/src/inventory.py — shape &amp; a mutation</figcaption><pre><span class="c"># inventory looks like: {"foods": {name: qty}, "meals": {name: qty}}</span>
+
+<span class="k">def</span> <span class="f">remove_stock</span>(name, amount=1, kind="food", db=INVENTORY):
+    <span class="k">if</span> amount &lt;= 0:
+        <span class="k">return</span> -1
+    inv = read_inventory(db)
+    section = inv[_section(kind)]
+    <span class="k">if</span> section.get(name, 0) + 1e-9 &lt; amount:    <span class="c"># not enough on hand?</span>
+        <span class="k">return</span> -1                               <span class="c"># reject; change nothing</span>
+    section[name] -= amount
+    <span class="k">if</span> section[name] &lt;= 1e-9:                    <span class="c"># clean up ~zero entries</span>
+        section.pop(name)
+    write_inventory(inv, db)
+    <span class="k">return</span> 0</pre></figure>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — the 1e-9 tolerance &amp; the 0/-1 convention</span>
+  <p>Computers store decimals imperfectly: <code class="inline">1.0 - 0.7 - 0.3</code> can equal <code class="inline">-0.0000000000000002</code> instead of <code class="inline">0</code>. The tiny <code class="inline">1e-9</code> ("one billionth") fudge factor stops that floating-point dust from leaving phantom "0.0000001 eggs" in your inventory. Separately, these functions return <code class="inline">0</code> for success and <code class="inline">-1</code> for failure — a simple convention the web layer translates into HTTP status codes.</p>
+</div>
+
+<h3>Menu: what can I build right now?</h3>
+<p>The menu doesn't store anything — it <em>computes</em>. For each meal, how many full copies can you make from the foods on hand? That's the minimum, across all ingredients, of "how much you have ÷ how much the recipe needs," rounded down:</p>
+
+<figure class="code"><figcaption>backend/src/menu.py</figcaption><pre><span class="k">import</span> math
+
+<span class="k">def</span> <span class="f">buildable_count</span>(meal, food_counts):
+    <span class="k">if</span> <span class="k">not</span> meal.foods:
+        <span class="k">return</span> 0
+    possible = []
+    <span class="k">for</span> food, required <span class="k">in</span> meal.foods.items():
+        <span class="k">if</span> required &lt;= 0:
+            <span class="k">continue</span>
+        possible.append(math.floor(food_counts.get(food.name, 0) / required))
+    <span class="k">return</span> min(possible) <span class="k">if</span> possible <span class="k">else</span> 0</pre></figure>
+
+<p>If a pie needs 3 apples and 1 crust, and you have 7 apples and 2 crusts, you can build <code class="inline">min(floor(7/3), floor(2/1)) = min(2, 2) = 2</code> pies. This is where the Chapter 1 <code class="inline">{food: amount}</code> decision quietly earns its keep.</p>
+
+<h3>The FastAPI scaffold</h3>
+<p>So far everything runs only in the terminal. To let a browser use it, we put an <strong>HTTP API</strong> in front of the logic.</p>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — web API, endpoints, HTTP verbs</span>
+  <p>A browser talks to a server by sending <em>requests</em> to <em>URLs</em>. An <em>endpoint</em> is one URL the server knows how to answer, like <code class="inline">/foods</code>. The <em>verb</em> says what you want: <code class="inline">GET</code> = "give me data," <code class="inline">POST</code> = "create something," <code class="inline">PUT</code> = "replace something," <code class="inline">DELETE</code> = "remove something." The data going back and forth is usually <strong>JSON</strong> — the same dict-and-list format we already serialize to. <strong>FastAPI</strong> is the Python library that turns a plain function into an endpoint.</p>
+</div>
+
+<figure class="code"><figcaption>backend/src/api.py — turning functions into endpoints</figcaption><pre><span class="f">@router.get</span>(<span class="s">"/foods"</span>)
+<span class="k">def</span> <span class="f">list_foods</span>():
+    foods, _ = _catalog()
+    <span class="k">return</span> [f.to_json() <span class="k">for</span> f <span class="k">in</span> foods]
+
+<span class="f">@router.post</span>(<span class="s">"/foods"</span>)
+<span class="k">def</span> <span class="f">add_food</span>(food: FoodIn):              <span class="c"># body validated against FoodIn</span>
+    f = Food(food.name, food.stores, food.cost, food.cals,
+             food.carbs, food.protein, food.fat, food.desc, ...)
+    add_to_bin(f.to_json())
+    <span class="k">return</span> {<span class="s">"ok"</span>: True}
+
+<span class="f">@router.get</span>(<span class="s">"/menu"</span>)
+<span class="k">def</span> <span class="f">get_menu</span>():
+    <span class="k">return</span> menu.menu()</pre></figure>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — Pydantic input validation</span>
+  <p>That <code class="inline">food: FoodIn</code> annotation is doing a lot. <code class="inline">FoodIn</code> is a <em>Pydantic model</em> — a schema describing what a valid request body looks like. FastAPI automatically rejects (with a clear error) any request whose data doesn't fit: missing name, a negative cost, a name that's too long. You write the shape once; bad input never reaches your logic.</p>
+</div>
+
+<figure class="code"><figcaption>backend/src/api.py — a validation model</figcaption><pre>SafeName = Annotated[str, Field(min_length=1, max_length=80, strip_whitespace=True)]
+
+<span class="k">class</span> <span class="f">FoodIn</span>(BaseModel):
+    name: SafeName
+    stores: list[Annotated[str, Field(max_length=80)]] = []
+    cost: float = Field(0.0, ge=0)          <span class="c"># ge=0 → must be ≥ 0</span>
+    cals: int = Field(0, ge=0)
+    <span class="c"># ... carbs, protein, fat, fiber, sugar, sodium (all ge=0)</span>
+
+    <span class="f">@field_validator</span>(<span class="s">"name"</span>)
+    <span class="f">@classmethod</span>
+    <span class="k">def</span> <span class="f">_v_name</span>(cls, v):
+        <span class="k">if</span> <span class="s">"/"</span> <span class="k">in</span> v <span class="k">or</span> <span class="s">"\\"</span> <span class="k">in</span> v <span class="k">or</span> <span class="s">"\x00"</span> <span class="k">in</span> v:
+            <span class="k">raise</span> ValueError(<span class="s">"name may not contain '/', '\\' or null bytes"</span>)
+        <span class="k">return</span> v</pre></figure>
+
+<div class="box why">
+  <span class="tag">✅ Why it matters — validate at the edge</span>
+  <p>Blocking <code class="inline">/</code> and null bytes in names isn't paranoia: names get used in URLs and could be abused for path tricks. Rejecting garbage <em>at the boundary</em> means every function deeper in keeps a simple promise — "the name is clean" — and never has to re-check.</p>
+</div>
+</section>
+
+
+<!-- ============================================================= -->
+<!-- CHAPTER 4 -->
+<!-- ============================================================= -->
+<section class="chapter" id="ch4">
+<h2 class="chap"><span class="num">Chapter 4</span><br>The frontend SPA</h2>
+<div class="commit-line">
+  <span class="lbl">commits:</span>
+  <span class="commit">a81d5dd</span><span class="commit">a3ef32a</span><span class="commit">c695e9f</span>
+</div>
+
+<p><strong>Goal:</strong> a real web interface — and, just as importantly, make the backend safe to leave running on the home network.</p>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — a Single-Page App (SPA)</span>
+  <p>Traditionally each click loads a brand-new HTML page from the server. An <em>SPA</em> loads one page once, then JavaScript redraws parts of it as you navigate, fetching only data (JSON) in the background. Cantina's SPA is deliberately tiny: plain JavaScript, <strong>no framework, no build step</strong> — just three files the browser loads directly.</p>
+</div>
+
+<h3>The backend serves the frontend (one origin, no CORS)</h3>
+<p>Rather than running the frontend on a separate web server, FastAPI serves the static files itself. The API routes are registered first; then the frontend folder is "mounted" at <code class="inline">/</code> so anything not matched by an API route falls back to the page:</p>
+
+<figure class="code"><figcaption>backend/src/api.py — mount the frontend last</figcaption><pre>app.include_router(router)        <span class="c"># API routes first...</span>
+
+FRONTEND_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__),
+                                              <span class="s">".."</span>, <span class="s">".."</span>, <span class="s">"frontend"</span>))
+app.mount(<span class="s">"/"</span>, StaticFiles(directory=FRONTEND_DIR, html=True), name=<span class="s">"frontend"</span>)</pre></figure>
+
+<div class="box why">
+  <span class="tag">✅ Why it matters — same origin kills a whole class of pain</span>
+  <p>When the page and the API share one address (<em>same origin</em>), the browser sends cookies automatically and there's no <strong>CORS</strong> (Cross-Origin Resource Sharing) configuration to fight with. CORS is the browser's rule that a page from site A can't freely call site B. By serving both from one place, that rule simply never applies — simpler <em>and</em> a smaller attack surface.</p>
+</div>
+
+<h3>api.js — the map of the backend</h3>
+<p>The frontend's <code class="inline">api.js</code> has exactly one function per endpoint. Read it top to bottom and you've seen the whole backend surface. A single tiny wrapper does every request:</p>
+
+<figure class="code"><figcaption>frontend/js/api.js — the request wrapper</figcaption><pre><span class="k">async function</span> <span class="f">request</span>(path, options = {}) {
+    <span class="k">const</span> res = <span class="k">await</span> fetch(BASE_URL + path, {
+        credentials: <span class="s">"same-origin"</span>,         <span class="c">// send the session cookie</span>
+        ...options,
+        headers: {
+            <span class="s">"Content-Type"</span>: <span class="s">"application/json"</span>,
+            <span class="s">"X-Requested-With"</span>: <span class="s">"cantina"</span>,  <span class="c">// CSRF guard (see Ch.9)</span>
+            ...(options.headers || {}),
+        },
+    });
+    <span class="k">if</span> (!res.ok) {
+        <span class="k">let</span> detail = res.statusText;
+        <span class="k">try</span> { detail = (<span class="k">await</span> res.json()).detail ?? detail; } <span class="k">catch</span> {}
+        <span class="k">if</span> (res.status === 401 &amp;&amp; onUnauthorized) onUnauthorized();
+        <span class="k">throw</span> <span class="k">new</span> Error(<span class="s">`</span>${res.status}: ${detail}<span class="s">`</span>);
+    }
+    <span class="k">return</span> res.json();
+}
+
+<span class="k">export function</span> <span class="f">listFoods</span>() { <span class="k">return</span> request(<span class="s">"/foods"</span>); }
+<span class="k">export function</span> <span class="f">addFood</span>(food) {
+    <span class="k">return</span> request(<span class="s">"/foods"</span>, { method: <span class="s">"POST"</span>, body: JSON.stringify(food) });
+}</pre></figure>
+
+<h3>State + re-render, and hash routing</h3>
+<p>The app keeps one <code class="inline">state</code> object in memory. After any change it re-fetches everything in parallel and repaints. Navigation uses the part of the URL after <code class="inline">#</code> (the "hash"), which the browser never sends to the server — so different "pages" like <code class="inline">#/inventory</code> need no extra backend routes.</p>
+
+<figure class="code"><figcaption>frontend/js/app.js — fetch everything, then render</figcaption><pre><span class="k">async function</span> <span class="f">loadAll</span>() {
+    <span class="k">let</span> foods, meals, inventory, menu, list;
+    <span class="k">try</span> {
+        [foods, meals, inventory, menu, list] = <span class="k">await</span> Promise.all([
+            api.listFoods(), api.listMeals(), api.getInventory(),
+            api.getMenu(), api.getList(),
+        ]);
+    } <span class="k">catch</span> (err) {
+        setStatus(<span class="s">`Could not reach the backend: ${err.message}. Is uvicorn running?`</span>);
+        <span class="k">return</span>;
+    }
+    state.foods = foods; state.meals = meals; state.inventory = inventory;
+    state.menu = menu;   state.list = list;
+    renderCurrentRoute();
+}
+window.addEventListener(<span class="s">"hashchange"</span>, renderCurrentRoute);</pre></figure>
+
+<!-- PITFALL: atomic writes -->
+<h3>Pitfall: torn files under concurrent access</h3>
+<p>Once a browser (and maybe several family phones) can hit the backend at once, two requests might try to write <code class="inline">data.bin</code> at the same moment. With the naïve "open, write" from Chapter 2, one write can land in the middle of another, leaving a half-written, <strong>corrupt</strong> file. The fix shipped in this chapter (commit <span class="commit">a81d5dd</span>) and is worth studying:</p>
+
+<figure class="code"><figcaption>grocery.py @ a81d5dd — locked + atomic write with rotating backups</figcaption><pre>_LOCKS: dict[str, threading.Lock] = {}     <span class="c"># one lock per file path</span>
+
+<span class="k">def</span> <span class="f">write_json_to_bin</span>(json_list, db=FOOD_AND_MEALS):
+    payload = json.dumps(json_list).encode(<span class="s">'utf-8'</span>)
+    tmp = db + <span class="s">".tmp"</span>
+    <span class="k">with</span> _lock_for(db):                     <span class="c"># 1. only one writer at a time</span>
+        _rotate_backup(db)                  <span class="c"># 2. keep .bak.0/.1/.2 copies</span>
+        <span class="k">with</span> open(tmp, <span class="s">"wb"</span>) <span class="k">as</span> f:           <span class="c"># 3. write to a SIDE file</span>
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())            <span class="c"># 4. force bytes to disk</span>
+        os.replace(tmp, db)                 <span class="c"># 5. atomic rename into place</span></pre></figure>
+
+<div class="box pitfall">
+  <span class="tag">⚠️ Pitfall — never overwrite a file in place</span>
+  <p>The trick is step 5: <code class="inline">os.replace</code> is <em>atomic</em> — the operating system guarantees readers see either the entire old file or the entire new one, never a half. So you write a complete temp file first, sync it to disk, then swap it in as one indivisible step. A <code class="inline">threading.Lock</code> serializes writers, and three rotating <code class="inline">.bak</code> copies give a manual undo. (Note the comment in the real code: this is safe for <em>one</em> server process only — which becomes the motivation for SQLite in Chapter 7.)</p>
+</div>
+
+<!-- PITFALL: fractional display -->
+<h3>Pitfall: <code style="font-size:.85em">1.0</code> vs <code style="font-size:.85em">1</code></h3>
+<p>Commit <span class="commit">c695e9f</span> let amounts be fractional everywhere (the UI steps by 0.5). But now the screen showed ugly values like "1.0 eggs" or floating-point dust like "0.30000000000000004." A tiny formatter fixes the display:</p>
+
+<figure class="code"><figcaption>frontend/js/app.js — fmtQty</figcaption><pre><span class="k">function</span> <span class="f">fmtQty</span>(n) {
+    <span class="k">if</span> (n == null || isNaN(n)) <span class="k">return</span> <span class="s">"0"</span>;
+    <span class="k">const</span> v = Math.round(Number(n) * 1000) / 1000;   <span class="c">// kill 1e-12 residue</span>
+    <span class="k">return</span> Number.isInteger(v) ? String(v) : v.toString();
+}</pre></figure>
+
+<div class="box why">
+  <span class="tag">✅ Why it matters</span>
+  <p>The <code class="inline">1e-9</code> trick on the backend (Ch.3) and <code class="inline">fmtQty</code> on the frontend are two halves of the same lesson: <strong>floating-point numbers need cleanup both when you store them and when you show them.</strong> Forget either and users see weirdness.</p>
+</div>
+</section>
+
+
+<!-- ============================================================= -->
+<!-- CHAPTER 5 -->
+<!-- ============================================================= -->
+<section class="chapter" id="ch5">
+<h2 class="chap"><span class="num">Chapter 5</span><br>Barcodes &amp; money</h2>
+<div class="commit-line">
+  <span class="lbl">commits:</span>
+  <span class="commit">184609b</span><span class="commit">0fb4111</span><span class="commit">275622b</span><span class="commit">3070c90</span><span class="commit">48ce39b</span>
+</div>
+
+<p><strong>Goal:</strong> two "real product" features. Scan a barcode to auto-fill a food's details, and track how much money you spend.</p>
+
+<h3>Barcode lookup via OpenFoodFacts</h3>
+<p><code class="inline">lookup.py</code> calls a free public database (OpenFoodFacts) and reshapes the answer into the same format the add-food form expects. It uses only Python's standard library — no new dependency:</p>
+
+<figure class="code"><figcaption>backend/src/lookup.py (trimmed)</figcaption><pre><span class="k">import</span> urllib.request, urllib.error, json
+
+OFF_URL = <span class="s">"https://world.openfoodfacts.org/api/v2/product/{code}.json"</span>
+_CACHE: dict[str, dict] = {}          <span class="c"># bounded in-process cache (~100)</span>
+
+<span class="k">def</span> <span class="f">lookup</span>(code: str):
+    code = (code <span class="k">or</span> <span class="s">""</span>).strip()
+    <span class="k">if</span> <span class="k">not</span> code <span class="k">or</span> <span class="k">not</span> code.isdigit():
+        <span class="k">return</span> None
+    <span class="k">if</span> code <span class="k">in</span> _CACHE:
+        <span class="k">return</span> _CACHE[code]      <span class="c"># don't re-hit the network during one trip</span>
+    req = urllib.request.Request(OFF_URL.format(code=code),
+                                 headers={<span class="s">"User-Agent"</span>: USER_AGENT})
+    <span class="k">try</span>:
+        <span class="k">with</span> urllib.request.urlopen(req, timeout=5) <span class="k">as</span> resp:
+            data = json.loads(resp.read().decode(<span class="s">"utf-8"</span>))
+    <span class="k">except</span> (urllib.error.URLError, TimeoutError, ValueError):
+        <span class="k">return</span> None            <span class="c"># network down / bad JSON → graceful None</span>
+    <span class="c"># ...map to a FoodIn-shaped dict, overlay a best-effort USD price...</span></pre></figure>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — caching &amp; graceful degradation</span>
+  <p>The <code class="inline">_CACHE</code> dict remembers recent lookups so scanning the same item twice doesn't hit the network twice. And every failure path returns <code class="inline">None</code> rather than raising — if OpenFoodFacts is down, you simply type the food in by hand. Optional features should <em>degrade gracefully</em>, never break the core app.</p>
+</div>
+
+<div class="box pitfall">
+  <span class="tag">⚠️ Pitfall — the camera scanner isn't universal</span>
+  <p>Commit <span class="commit">0fb4111</span> discovered the browser's <code class="inline">BarcodeDetector</code> API only exists on some browsers (Chrome/Edge on Android) and needs HTTPS to use the camera at all. iOS Safari has neither. The fix: feature-detect and <strong>hide</strong> the camera button where it won't work, while the manual "type the barcode" path always remains. Always assume a browser feature might be missing.</p>
+</div>
+
+<figure class="code"><figcaption>frontend/js/app.js — feature detection</figcaption><pre><span class="k">const</span> scanBtn = $(<span class="s">"scan-btn"</span>);
+<span class="k">if</span> (<span class="s">"BarcodeDetector"</span> <span class="k">in</span> window) {
+    scanBtn.addEventListener(<span class="s">"click"</span>, onScanBarcode);
+} <span class="k">else</span> {
+    scanBtn.hidden = <span class="k">true</span>;          <span class="c">// no camera API → hide the button</span>
+}</pre></figure>
+
+<div class="box pitfall">
+  <span class="tag">⚠️ Pitfall — silent form failures</span>
+  <p>The same commit fixed a confusing bug: the browser's built-in form validation would silently block a submit (e.g. a stray <code class="inline">step</code> mismatch on the sodium field) with no message. The fix turned off native validation (<code class="inline">form.noValidate = true</code>) and validates in JavaScript so the <em>specific</em> failing field is shown in a status banner. Invisible errors are worse than loud ones.</p>
+</div>
+
+<h3>The spending log</h3>
+<p>Commit <span class="commit">48ce39b</span> added <code class="inline">spending.py</code>: a list of purchase entries, each with a timestamp, quantity, unit cost, total, and a <em>source</em> tag saying where it came from (the grocery list, a stock-add, or typed in manually). IDs are assigned as "current max + 1":</p>
+
+<figure class="code"><figcaption>backend/src/spending.py — add_entry</figcaption><pre><span class="k">def</span> <span class="f">add_entry</span>(name, qty, unit_cost, source="manual", db=SPENDING):
+    <span class="k">if</span> source <span class="k">not</span> <span class="k">in</span> ALLOWED_SOURCES:
+        source = <span class="s">"manual"</span>
+    <span class="k">if</span> qty &lt;= 0 <span class="k">or</span> unit_cost &lt; 0:
+        <span class="k">return</span> None
+    entries = read_entries_raw(db)
+    next_id = (max((e.get(<span class="s">"id"</span>, 0) <span class="k">for</span> e <span class="k">in</span> entries), default=0)) + 1
+    entry = {
+        <span class="s">"id"</span>: next_id,
+        <span class="s">"ts"</span>: datetime.now(timezone.utc).isoformat(timespec=<span class="s">"seconds"</span>)
+                  .replace(<span class="s">"+00:00"</span>, <span class="s">"Z"</span>),
+        <span class="s">"name"</span>: name, <span class="s">"qty"</span>: float(qty), <span class="s">"unit_cost"</span>: float(unit_cost),
+        <span class="s">"total"</span>: float(qty) * float(unit_cost), <span class="s">"source"</span>: source,
+    }
+    entries.append(entry); _write(entries, db)
+    <span class="k">return</span> entry</pre></figure>
+
+<p>The weekly bars view is computed by <code class="inline">totals_by_week</code>, which pre-seeds every one of the last 12 weeks with <code class="inline">0.0</code> so the chart has a continuous x-axis even for empty weeks — then renders as a pure-CSS bar chart (no charting library).</p>
+</section>
+
+
+<!-- ============================================================= -->
+<!-- CHAPTER 6 -->
+<!-- ============================================================= -->
+<section class="chapter" id="ch6">
+<h2 class="chap"><span class="num">Chapter 6</span><br>Phase 0 — the safety net</h2>
+<div class="commit-line"><span class="lbl">commit:</span><span class="commit">a4aee07</span></div>
+
+<p><strong>Goal:</strong> the app works, but a big rewrite is coming (SQLite). Before touching the foundation, make the project <em>reproducible</em> and <em>testable</em> so we can prove the rewrite changed nothing the user can see.</p>
+
+<div class="box why">
+  <span class="tag">✅ Why it matters — the order of operations</span>
+  <p>This is the single most mature decision in the whole history: <strong>write the safety net before the risky change, not after.</strong> Tests written now capture exactly how the app behaves today. After the SQLite migration, if the same tests still pass, the migration is provably invisible to users.</p>
+</div>
+
+<h3>config.py — settings from the environment</h3>
+<p>Until now, paths and ports were hardcoded. <code class="inline">config.py</code> reads them once from <em>environment variables</em>, with sensible defaults, so the data can live outside the code folder (and survive git operations):</p>
+
+<figure class="code"><figcaption>backend/src/config.py</figcaption><pre><span class="k">import</span> os
+_SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+
+DATA_DIR = os.environ.get(<span class="s">"CANTINA_DATA_DIR"</span>) <span class="k">or</span> _SRC_DIR
+HOST     = os.environ.get(<span class="s">"CANTINA_HOST"</span>, <span class="s">"0.0.0.0"</span>)
+PORT     = int(os.environ.get(<span class="s">"CANTINA_PORT"</span>, <span class="s">"8000"</span>))
+
+<span class="k">def</span> <span class="f">data_path</span>(filename: str) -> str:
+    <span class="k">return</span> os.path.join(DATA_DIR, filename)</pre></figure>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — environment variables</span>
+  <p>An <em>environment variable</em> is a setting you hand a program when you launch it, from outside the code (e.g. <code class="inline">CANTINA_PORT=8080 python api.py</code>). It keeps machine-specific choices (where files live, which port) out of the source, so the same code runs on a laptop and a server unchanged.</p>
+</div>
+
+<h3>Characterization tests</h3>
+<div class="box concept">
+  <span class="tag">💡 Concept — a characterization test</span>
+  <p>A regular test checks "does this do what it <em>should</em>?" A <em>characterization</em> test checks "does this still do what it <em>currently does</em>?" — you pin down today's behavior so a refactor can't change it without you noticing. Perfect before a migration.</p>
+</div>
+
+<p>The cleverest piece is the test setup (<code class="inline">conftest.py</code>). It points the data directory at a throwaway temp folder <strong>before importing the app</strong>, because <code class="inline">config.py</code> reads the path at import time. Get the order wrong and your tests would scribble on real data:</p>
+
+<figure class="code"><figcaption>backend/tests/conftest.py</figcaption><pre><span class="c"># 1. Redirect ALL persistence to a temp dir BEFORE importing the app.</span>
+_TMP_DATA_DIR = tempfile.mkdtemp(prefix=<span class="s">"cantina-tests-"</span>)
+os.environ[<span class="s">"CANTINA_DATA_DIR"</span>] = _TMP_DATA_DIR
+
+<span class="c"># 2. Make backend/src importable, THEN import the app modules.</span>
+sys.path.insert(0, _SRC)
+<span class="k">import</span> db, auth, ratelimit, api    <span class="c"># noqa: must come after the setup above</span>
+
+<span class="f">@pytest.fixture</span>(autouse=True)
+<span class="k">def</span> <span class="f">clean_data_dir</span>():
+    <span class="c"># Wipe the temp dir before each test so cases are independent.</span>
+    <span class="k">for</span> name <span class="k">in</span> os.listdir(_TMP_DATA_DIR):
+        os.remove(os.path.join(_TMP_DATA_DIR, name))
+    db.reset(); ratelimit.reset()
+    <span class="k">yield</span></pre></figure>
+
+<div class="box tryit">
+  <span class="tag">🔧 Try it</span>
+  <p>From <code class="inline">backend/</code>: <code class="inline">src/venv/bin/pytest</code>. Phase 0 shipped 9 passing tests; by the end of the project there are 26.</p>
+</div>
+</section>
+
+
+<!-- ============================================================= -->
+<!-- CHAPTER 7 -->
+<!-- ============================================================= -->
+<section class="chapter" id="ch7">
+<h2 class="chap"><span class="num">Chapter 7</span><br>Phase 1 — migrate to SQLite</h2>
+<div class="commit-line"><span class="lbl">commit:</span><span class="commit">a6cb1b0</span></div>
+
+<p><strong>Goal:</strong> replace the flat <code class="inline">.bin</code> files with a real database — without changing the API, the menu logic, or the frontend at all.</p>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — why a database beats a flat file</span>
+  <p>A single JSON file means: rewrite the <em>whole</em> file on every change, allow only one writer at a time, and no real way to query ("all spending since March"). <strong>SQLite</strong> is a complete relational database that lives in one file but gives you <em>transactions</em> (all-or-nothing changes), concurrent reads, and SQL queries — with zero server to run. It's built into Python.</p>
+</div>
+
+<h3>The schema</h3>
+<p><code class="inline">db.py</code> owns the table definitions. Notice every data table already carries a <code class="inline">household_id</code> column — that's groundwork for multi-user support in the <em>next</em> chapter, set to a default of 1 for now:</p>
+
+<figure class="code"><figcaption>backend/src/db.py — schema excerpt</figcaption><pre>CREATE TABLE IF NOT EXISTS foods (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    household_id INTEGER NOT NULL DEFAULT 1 REFERENCES households(id) ON DELETE CASCADE,
+    name         TEXT    NOT NULL,
+    stores       TEXT    NOT NULL DEFAULT 'null',   <span class="c">-- JSON (list or null)</span>
+    cost         REAL    NOT NULL DEFAULT 0,
+    cals         INTEGER NOT NULL DEFAULT 0,
+    <span class="c">-- carbs, protein, fat, brand, barcode, fiber, sugar, sodium ...</span>
+    UNIQUE (household_id, name)                      <span class="c">-- one name per household</span>
+);
+
+<span class="c">-- Ingredients reference foods by NAME, not id, so a meal can list a food</span>
+<span class="c">-- that isn't (or is no longer) in the catalog without the row vanishing.</span>
+CREATE TABLE IF NOT EXISTS meal_ingredients (
+    meal_id   INTEGER NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
+    food_name TEXT    NOT NULL,
+    amount    REAL    NOT NULL,
+    PRIMARY KEY (meal_id, food_name)
+);</pre></figure>
+
+<h3>The connection helper &amp; WAL mode</h3>
+<figure class="code"><figcaption>backend/src/db.py — connections as a transaction</figcaption><pre><span class="k">def</span> <span class="f">_raw_connect</span>():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute(<span class="s">"PRAGMA journal_mode=WAL"</span>)      <span class="c"># readers + 1 writer coexist</span>
+    conn.execute(<span class="s">"PRAGMA foreign_keys=ON"</span>)       <span class="c"># enforce REFERENCES rules</span>
+    conn.execute(<span class="s">"PRAGMA busy_timeout=5000"</span>)     <span class="c"># wait up to 5s for a lock</span>
+    <span class="k">return</span> conn
+
+<span class="f">@contextmanager</span>
+<span class="k">def</span> <span class="f">get_conn</span>():
+    <span class="c">'''Commit on success, roll back on error, always close.'''</span>
+    ensure_initialized()
+    conn = _raw_connect()
+    <span class="k">try</span>:
+        <span class="k">yield</span> conn
+        conn.commit()
+    <span class="k">except</span> Exception:
+        conn.rollback()
+        <span class="k">raise</span>
+    <span class="k">finally</span>:
+        conn.close()</pre></figure>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — transactions &amp; WAL</span>
+  <p>A <em>transaction</em> groups several changes so they all succeed or all undo together — you never end up half-updated. The <code class="inline">get_conn()</code> helper makes that automatic. <em>WAL</em> (Write-Ahead Logging) is a SQLite mode where writes go to a side log first, letting readers keep reading while one writer writes. That's what lifts the old "single process only" limit from Chapter 4's file locks.</p>
+</div>
+
+<h3>The one-time legacy importer</h3>
+<p>Existing users already have data in <code class="inline">.bin</code> files. On first run against a fresh database, <code class="inline">db.py</code> imports them — exactly once, guarded by a flag row so it never double-imports even if you later empty everything out:</p>
+
+<figure class="code"><figcaption>backend/src/db.py — idempotent import</figcaption><pre><span class="k">if</span> conn.execute(<span class="s">"SELECT 1 FROM meta WHERE key = 'legacy_imported'"</span>).fetchone() <span class="k">is</span> None:
+    _import_legacy(conn)
+    conn.execute(<span class="s">"INSERT INTO meta (key, value) VALUES ('legacy_imported', '1')"</span>)</pre></figure>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — idempotency</span>
+  <p>An operation is <em>idempotent</em> if running it twice does no more than running it once. The <code class="inline">legacy_imported</code> flag makes the import idempotent — safe to run on every startup. Idempotency is a recurring theme: schema creation uses <code class="inline">CREATE TABLE IF NOT EXISTS</code>, the household seed uses <code class="inline">INSERT OR IGNORE</code>.</p>
+</div>
+
+<h3>The seam pays off</h3>
+<p>Remember the seam from Chapter 2? The migration's whole trick is that <code class="inline">grocery.py</code>'s public functions keep their <em>exact same names and shapes</em> — only their <em>insides</em> now talk to SQLite instead of a file. <code class="inline">api.py</code>, <code class="inline">menu.py</code>, and the entire frontend are untouched:</p>
+
+<figure class="code"><figcaption>backend/src/grocery.py — same signature, new guts</figcaption><pre><span class="k">def</span> <span class="f">read_json_from_bin</span>(db=FOOD_AND_MEALS):
+    <span class="k">with</span> get_conn() <span class="k">as</span> conn:
+        rows = conn.execute(
+            <span class="s">"SELECT name, stores, cost, cals, ... FROM foods "</span>
+            <span class="s">"WHERE household_id = ? ORDER BY id"</span>,
+            (current_household_id(),)).fetchall()
+        <span class="c"># rebuild each Food and re-serialize, so the dict shape the API</span>
+        <span class="c"># returns is byte-for-byte what it always was</span>
+        ...</pre></figure>
+
+<div class="box why">
+  <span class="tag">✅ Why it matters</span>
+  <p>This is the reward for the two earlier investments: the JSON seam (Ch.2) gave a clean swap point, and the characterization tests (Ch.6) proved the swap changed nothing. The only visible difference was that some integers became <code class="inline">1.0</code> instead of <code class="inline">1</code> — which <code class="inline">fmtQty</code> already renders identically.</p>
+</div>
+</section>
+
+
+<!-- ============================================================= -->
+<!-- CHAPTER 8 -->
+<!-- ============================================================= -->
+<section class="chapter" id="ch8">
+<h2 class="chap"><span class="num">Chapter 8</span><br>Phase 2 — accounts &amp; households</h2>
+<div class="commit-line"><span class="lbl">commit:</span><span class="commit">81e7618</span></div>
+
+<p><strong>Goal:</strong> add logins, and make sure one family's data is invisible to another. The <code class="inline">household</code> is the unit of separation; family members are users within a household.</p>
+
+<h3>Passwords: hashing, not storing</h3>
+<div class="box concept">
+  <span class="tag">💡 Concept — hashing vs encryption, and salt</span>
+  <p>You must <strong>never store the actual password.</strong> <em>Encryption</em> is reversible (there's a key to get the original back); <em>hashing</em> is a one-way scramble — easy to compute forward, practically impossible to reverse. To check a login you hash what they typed and compare hashes. A <em>salt</em> is random data mixed in so two people with the same password get different hashes (defeating precomputed "rainbow table" attacks). <strong>PBKDF2</strong> repeats the hash hundreds of thousands of times to make guessing slow.</p>
+</div>
+
+<figure class="code"><figcaption>backend/src/auth.py — password hashing</figcaption><pre>PBKDF2_ITERATIONS = 600_000
+
+<span class="k">def</span> <span class="f">hash_password</span>(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac(<span class="s">"sha256"</span>, password.encode(<span class="s">"utf-8"</span>),
+                             salt, PBKDF2_ITERATIONS)
+    <span class="k">return</span> <span class="s">f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt.hex()}${dk.hex()}"</span>
+
+<span class="k">def</span> <span class="f">verify_password</span>(password: str, stored: str) -> bool:
+    algo, iters, salt_hex, hash_hex = stored.split(<span class="s">"$"</span>)
+    dk = hashlib.pbkdf2_hmac(<span class="s">"sha256"</span>, password.encode(<span class="s">"utf-8"</span>),
+                             bytes.fromhex(salt_hex), int(iters))
+    <span class="k">return</span> hmac.compare_digest(dk.hex(), hash_hex)   <span class="c"># constant-time compare</span></pre></figure>
+
+<p>The stored string packs everything needed to verify later — algorithm, iteration count, salt, and hash — separated by <code class="inline">$</code>. The comparison uses <code class="inline">hmac.compare_digest</code>, which takes the same time whether the first or last character differs (more on that in Chapter 9).</p>
+
+<h3>Sessions: a token in a cookie</h3>
+<div class="box concept">
+  <span class="tag">💡 Concept — sessions vs JWT</span>
+  <p>After login the server needs to remember "this browser is Alice." Cantina creates a random <em>token</em>, stores it in a <code class="inline">sessions</code> table, and sends it to the browser as an <strong>httponly cookie</strong> (JavaScript can't read it, blunting theft via cross-site scripting). On each request the browser returns the cookie; the server looks up the token. This is a <em>server-side session</em>: the token is meaningless on its own and can be revoked instantly by deleting the row — unlike a self-contained <em>JWT</em>, which is harder to revoke.</p>
+</div>
+
+<figure class="code"><figcaption>backend/src/auth.py — create a session</figcaption><pre><span class="k">def</span> <span class="f">create_session</span>(user_id: int) -> str:
+    purge_expired()
+    token = secrets.token_urlsafe(32)        <span class="c"># random, unguessable</span>
+    now = datetime.now(timezone.utc)
+    expires = (now + timedelta(seconds=SESSION_ABSOLUTE_SECONDS)).isoformat()
+    <span class="k">with</span> db.get_conn() <span class="k">as</span> conn:
+        conn.execute(
+            <span class="s">"INSERT INTO sessions (token, user_id, expires_at, last_used_at) "</span>
+            <span class="s">"VALUES (?, ?, ?, ?)"</span>,
+            (token, user_id, expires, now.isoformat()))
+    <span class="k">return</span> token</pre></figure>
+
+<h3>Multi-tenancy: one switch protects every query</h3>
+<div class="box concept">
+  <span class="tag">💡 Concept — multi-tenancy &amp; IDOR</span>
+  <p><em>Multi-tenancy</em> means many independent customers (here, households) share one app and database, each seeing only their own rows. The classic failure is <strong>IDOR</strong> (Insecure Direct Object Reference): you ask for "spending entry #5" and the server hands it over without checking it's <em>yours</em>. Cantina's defense is structural — every query filters by the current household, and that household is set in one place per request.</p>
+</div>
+
+<p>The mechanism is a <em>context variable</em> — a value that's private to each in-flight request. The login dependency sets it; every data query reads it:</p>
+
+<figure class="code"><figcaption>backend/src/db.py — the per-request household</figcaption><pre>_current_household = contextvars.ContextVar(<span class="s">"current_household"</span>, default=HOUSEHOLD_ID)
+
+<span class="k">def</span> <span class="f">current_household_id</span>(): <span class="k">return</span> _current_household.get()
+<span class="k">def</span> <span class="f">set_current_household</span>(hid): _current_household.set(hid)</pre></figure>
+
+<figure class="code"><figcaption>backend/src/auth.py — the gate that scopes the request</figcaption><pre><span class="k">async def</span> <span class="f">get_current_user</span>(request: Request):
+    user = get_session_user(request.cookies.get(COOKIE_NAME))
+    <span class="k">if</span> <span class="k">not</span> user:
+        <span class="k">raise</span> HTTPException(status_code=401, detail=<span class="s">"not authenticated"</span>)
+    db.set_current_household(user[<span class="s">"household_id"</span>])   <span class="c"># scope ALL later queries</span>
+    <span class="k">return</span> user</pre></figure>
+
+<p>Every data route is then placed behind this one dependency, so no individual endpoint needs its own auth code:</p>
+
+<figure class="code"><figcaption>backend/src/api.py — gate the whole router</figcaption><pre>router = APIRouter(dependencies=[Depends(auth.get_current_user)])
+<span class="c"># /foods, /inventory, /menu, /list, /spending ... all now require login</span>
+<span class="c"># and are automatically scoped to the caller's household.</span></pre></figure>
+
+<div class="box pitfall">
+  <span class="tag">⚠️ Pitfall — why get_current_user must be <code style="font-size:.9em">async</code></span>
+  <p>This subtlety bit the author. A context variable set inside a <em>synchronous</em> dependency lands in a throwaway worker-thread context and is invisible to the sync endpoint that follows — so queries would silently use the default household. Making <code class="inline">get_current_user</code> <strong>async</strong> means it runs in the request's own task context, so the household value propagates correctly into the endpoint and its database calls. Subtle, and exactly the kind of thing tests for cross-household isolation catch.</p>
+</div>
+
+<h3>Seeding the first admin</h3>
+<p>There's no public signup, so the first account is created from the command line via <code class="inline">manage.py</code>; after that, an admin invites family from inside the app:</p>
+
+<figure class="code"><figcaption>terminal</figcaption><pre>cd backend/src
+python manage.py create-user --email you@example.com --role admin
+<span class="c"># prompts for a password so it stays out of your shell history</span></pre></figure>
+
+<p>On the frontend, the page boots by asking <code class="inline">/auth/me</code>; if that returns 401 it shows the login screen, and any later 401 (an expired session) flips back automatically:</p>
+
+<figure class="code"><figcaption>frontend/js/app.js — boot gate</figcaption><pre>api.setUnauthorizedHandler(showLogin);     <span class="c">// any 401 → login screen</span>
+<span class="k">try</span> {
+    <span class="k">const</span> user = <span class="k">await</span> api.me();           <span class="c">// is there a live session?</span>
+    showApp(user);
+    <span class="k">await</span> loadAll();
+} <span class="k">catch</span> (err) {
+    <span class="k">if</span> (err.status === 401) showLogin();
+}</pre></figure>
+</section>
+
+
+<!-- ============================================================= -->
+<!-- CHAPTER 9 -->
+<!-- ============================================================= -->
+<section class="chapter" id="ch9">
+<h2 class="chap"><span class="num">Chapter 9</span><br>Phase 2.5 — security hardening</h2>
+<div class="commit-line"><span class="lbl">commit:</span><span class="commit">12e1382</span></div>
+
+<p><strong>Goal:</strong> a LAN app is one thing; exposing it to the internet is another. This phase closes the gaps a determined attacker would probe, <em>before</em> any remote access is switched on.</p>
+
+<div class="box why">
+  <span class="tag">✅ Why it matters — harden before you expose</span>
+  <p>Every measure below was added while the app was still LAN-only. The philosophy: pay the security cost <em>before</em> opening the door, not after the first incident.</p>
+</div>
+
+<h3>Session timeouts</h3>
+<p>Sessions now have two clocks: an <strong>idle</strong> timeout (logged out after inactivity) and an <strong>absolute</strong> cap (logged out regardless), both env-tunable. The idle clock slides forward on each use:</p>
+
+<figure class="code"><figcaption>backend/src/auth.py — enforce + slide</figcaption><pre><span class="k">if</span> expires <span class="k">is</span> None <span class="k">or</span> now &gt;= expires:                          <span class="c"># absolute cap</span>
+    delete_session(token); <span class="k">return</span> None
+<span class="k">if</span> last_used <span class="k">is</span> None <span class="k">or</span> (now - last_used).total_seconds() &gt; SESSION_IDLE_SECONDS:
+    delete_session(token); <span class="k">return</span> None                          <span class="c"># idle timeout</span>
+<span class="c"># otherwise slide the idle clock forward</span>
+conn.execute(<span class="s">"UPDATE sessions SET last_used_at = ? WHERE token = ?"</span>, ...)</pre></figure>
+
+<h3>Brute-force throttle &amp; timing-safe login</h3>
+<p><code class="inline">ratelimit.py</code> keeps an in-memory count of failed logins per <code class="inline">(ip, email)</code> with a looser per-IP cap. Too many failures → HTTP 429 with a <code class="inline">Retry-After</code> header:</p>
+
+<figure class="code"><figcaption>backend/src/ratelimit.py</figcaption><pre>MAX_ATTEMPTS   = int(os.environ.get(<span class="s">"CANTINA_LOGIN_MAX_ATTEMPTS"</span>, <span class="s">"5"</span>))
+WINDOW_SECONDS = int(os.environ.get(<span class="s">"CANTINA_LOGIN_WINDOW"</span>, str(15 * 60)))
+
+<span class="k">def</span> <span class="f">_keys</span>(ip, email):
+    <span class="c"># tight per (ip, email); looser per ip so one shared address isn't</span>
+    <span class="c"># locked out by one member's typos</span>
+    <span class="k">return</span> [(<span class="s">f"ipemail:{ip}|{email}"</span>, MAX_ATTEMPTS), (<span class="s">f"ip:{ip}"</span>, MAX_ATTEMPTS * 4)]</pre></figure>
+
+<div class="box pitfall">
+  <span class="tag">⚠️ Pitfall — email enumeration via timing</span>
+  <p>If a login for an unknown email returns instantly but a known email takes 50ms (because it actually hashes the password), an attacker can <em>tell which emails are registered</em> just by timing. The fix: when the email is unknown, still verify against a throwaway dummy hash so the work — and the time — is identical:</p>
+</div>
+
+<figure class="code"><figcaption>backend/src/auth.py — constant-time authenticate</figcaption><pre>_DUMMY_HASH = hash_password(<span class="s">"cantina-timing-equalizer-placeholder"</span>)
+
+<span class="k">def</span> <span class="f">authenticate</span>(email, password):
+    user = get_user_by_email(email)
+    <span class="k">if</span> user:
+        ok = verify_password(password, user[<span class="s">"password_hash"</span>])
+    <span class="k">else</span>:
+        verify_password(password, _DUMMY_HASH)   <span class="c"># burn the same time</span>
+        ok = False
+    <span class="k">return</span> user <span class="k">if</span> ok <span class="k">else</span> None</pre></figure>
+
+<div class="box pitfall">
+  <span class="tag">⚠️ Pitfall — forged proxy headers</span>
+  <p>Behind a proxy, the real client IP arrives in an <code class="inline">X-Forwarded-For</code> header — but that header is <em>attacker-controlled</em> if you trust it blindly, letting one client forge unlimited fake IPs to dodge the throttle. So the code trusts it <strong>only</strong> when <code class="inline">CANTINA_TRUSTED_PROXY=1</code> is explicitly set (which you do only once a real proxy sits in front).</p>
+</div>
+
+<h3>CSRF protection</h3>
+<div class="box concept">
+  <span class="tag">💡 Concept — CSRF</span>
+  <p><em>Cross-Site Request Forgery</em>: a malicious page you visit secretly makes your browser fire a request to Cantina, riding along on your logged-in cookie. Cantina's defense is a custom header — every state-changing request must carry <code class="inline">X-Requested-With: cantina</code>. A cross-site page <em>cannot</em> set a custom header without a CORS grant (which Cantina never gives), so forged requests are rejected. <code class="inline">SameSite=Strict</code> on the cookie is a second layer.</p>
+</div>
+
+<figure class="code"><figcaption>backend/src/api.py — CSRF + security headers middleware</figcaption><pre><span class="f">@app.middleware</span>(<span class="s">"http"</span>)
+<span class="k">async def</span> <span class="f">security_middleware</span>(request, call_next):
+    <span class="k">if</span> request.method <span class="k">not</span> <span class="k">in</span> _SAFE_METHODS:                 <span class="c"># POST/PUT/DELETE</span>
+        <span class="k">if</span> request.headers.get(<span class="s">"x-requested-with"</span>, <span class="s">""</span>).lower() != <span class="s">"cantina"</span>:
+            <span class="k">return</span> JSONResponse({<span class="s">"detail"</span>: <span class="s">"missing or invalid X-Requested-With"</span>},
+                                status_code=403)
+    response = <span class="k">await</span> call_next(request)
+    <span class="k">for</span> key, value <span class="k">in</span> _SECURITY_HEADERS.items():        <span class="c"># CSP, X-Frame-Options...</span>
+        response.headers.setdefault(key, value)
+    <span class="k">return</span> response</pre></figure>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — the security headers (CSP &amp; friends)</span>
+  <p>The middleware also stamps every response with defensive headers: <strong>Content-Security-Policy</strong> (<code class="inline">default-src 'self'</code>) tells the browser to only load scripts/images from this site, neutering injected scripts; <strong>X-Frame-Options: DENY</strong> stops the site being embedded in a hidden iframe (clickjacking); <strong>X-Content-Type-Options: nosniff</strong> stops the browser guessing file types. <strong>HSTS</strong> is added only once you're on HTTPS.</p>
+</div>
+
+<h3>Cookies &amp; files at rest</h3>
+<p>Cookies get hardened: <code class="inline">SameSite=Strict</code>, <code class="inline">httponly</code>, and — once on HTTPS — the <code class="inline">Secure</code> flag plus the browser-enforced <code class="inline">__Host-</code> name prefix. On disk, the database holds password hashes and live tokens, so the data directory is locked to owner-only and the DB file is forced to mode <code class="inline">0600</code>:</p>
+
+<figure class="code"><figcaption>config.py &amp; db.py — least privilege on disk</figcaption><pre><span class="c"># config.py: every file this process creates is owner-only</span>
+os.umask(0o077)
+os.makedirs(DATA_DIR, mode=0o700, exist_ok=True)
+
+<span class="c"># db.py: tighten the db (and its WAL sidecars) even if they pre-existed</span>
+<span class="k">for</span> path <span class="k">in</span> (DB_PATH, DB_PATH + <span class="s">"-wal"</span>, DB_PATH + <span class="s">"-shm"</span>):
+    <span class="k">try</span>: os.chmod(path, 0o600)
+    <span class="k">except</span> OSError: <span class="k">pass</span></pre></figure>
+
+<p>Finally, the interactive API docs (Swagger) are <strong>off by default</strong> — they'd otherwise hand an attacker a map of every endpoint. Set <code class="inline">CANTINA_ENABLE_DOCS=1</code> to turn them on for local development.</p>
+
+<div class="box pitfall">
+  <span class="tag">⚠️ Pitfall — the throttle is single-process</span>
+  <p>The brute-force counter lives in one process's memory. Run multiple server workers and each keeps its own count, weakening the limit. The code is honest about this in its docstring: a public, multi-process deployment (a future "Phase 4") would move the counter to a shared store like Redis. Knowing a component's limits is part of building it.</p>
+</div>
+</section>
+
+
+<!-- ============================================================= -->
+<!-- CHAPTER 10 -->
+<!-- ============================================================= -->
+<section class="chapter" id="ch10">
+<h2 class="chap"><span class="num">Chapter 10</span><br>Running, testing &amp; deploying</h2>
+
+<h3>Run it locally</h3>
+<figure class="code"><figcaption>terminal</figcaption><pre>cd backend/src
+../src/venv/bin/python api.py            <span class="c"># honors CANTINA_HOST / CANTINA_PORT</span>
+<span class="c"># or, equivalently:</span>
+../src/venv/bin/uvicorn api:app --host 0.0.0.0 --port 8000
+<span class="c"># then create the first admin, and open http://localhost:8000</span>
+python manage.py create-user --email you@example.com --role admin</pre></figure>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — uvicorn</span>
+  <p>FastAPI describes <em>what</em> the endpoints are; it doesn't actually listen on the network. <strong>uvicorn</strong> is the <em>server</em> that runs your FastAPI app and accepts HTTP connections. <code class="inline">--host 0.0.0.0</code> makes it reachable from other devices on your LAN; <code class="inline">127.0.0.1</code> would keep it to the local machine only.</p>
+</div>
+
+<h3>Test it</h3>
+<figure class="code"><figcaption>terminal — from backend/</figcaption><pre>src/venv/bin/pytest            <span class="c"># 26 tests: api, auth, security</span></pre></figure>
+
+<h3>Deploy it (systemd)</h3>
+<p>For an always-on home server, a systemd unit keeps the app running and restarts it on failure. The committed unit also <em>pre-stages</em> the HTTPS/remote-access settings as comments to flip on later, and runs the process with reduced privileges:</p>
+
+<figure class="code"><figcaption>backend/deploy/cantina.service (excerpt)</figcaption><pre>[Service]
+WorkingDirectory=/.../backend/src
+<span class="c"># Set the data dir EXPLICITLY so the server and manage.py never drift apart</span>
+Environment=CANTINA_DATA_DIR=/.../backend/src
+<span class="c"># --- Phase 3: uncomment once a tunnel terminates TLS in front ---</span>
+<span class="c">#Environment=CANTINA_SECURE_COOKIES=1</span>
+<span class="c">#Environment=CANTINA_TRUSTED_PROXY=1</span>
+ExecStart=/.../venv/bin/uvicorn api:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only</pre></figure>
+
+<div class="box why">
+  <span class="tag">✅ Why it matters — one source of truth for the data dir</span>
+  <p>The unit pins <code class="inline">CANTINA_DATA_DIR</code> explicitly. An earlier mistake was the server and the <code class="inline">manage.py</code> CLI defaulting to <em>different</em> directories, so the admin you created didn't exist as far as the running server was concerned. Pinning it once removes that whole class of "it works on my machine" confusion. Pair it with the <code class="inline">backup.sh</code> script and a systemd timer for off-host snapshots.</p>
+</div>
+</section>
+
+
+<!-- ============================================================= -->
+<!-- CHAPTER 11 -->
+<!-- ============================================================= -->
+<section class="chapter" id="ch11">
+<h2 class="chap"><span class="num">Chapter 11</span><br>Phase 3 — remote access with a Cloudflare Tunnel</h2>
+
+<p><strong>Goal:</strong> let the family reach Cantina from <em>outside</em> the house — on a phone, on cellular data — over real HTTPS, without poking a hole in the home router and without making anyone toggle a VPN. The hardening in Chapter 9 was the price of admission; this chapter actually opens the door.</p>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — a tunnel instead of port-forwarding</span>
+  <p>The obvious way to expose a home server is to forward a port on your router so the internet can connect <em>in</em>. That also means anyone on the internet can connect in — to a machine on your home network. A <strong>tunnel</strong> inverts this: a small program (<code class="inline">cloudflared</code>) running next to the app dials <em>out</em> to Cloudflare's edge and holds the connection open. Public requests arrive at Cloudflare, which pushes them back down that outbound pipe to the app. <strong>No inbound ports are opened; your router and firewall stay completely closed.</strong></p>
+</div>
+
+<div class="diagram">
+  Phone (cellular)        Cloudflare edge            Your home machine
+ ┌──────────────┐  HTTPS  ┌──────────────┐  tunnel  ┌────────────────────┐
+ │ cantina.…dev  │───────▶│  TLS term.    │◀════════│ cloudflared          │
+ └──────────────┘         │  + WAF/DNS    │  (out)  │   │  http://127.0.0.1  │
+                          └──────────────┘         │   ▼  :8000 (uvicorn) │
+                                                    └────────────────────┘
+   No router port-forward. The only path in is the outbound tunnel.
+</div>
+
+<h3>The tunnel config</h3>
+<p>A <em>locally-managed</em> tunnel is driven by one small YAML file plus a credentials JSON that <code class="inline">cloudflared tunnel create</code> writes. The <strong>ingress</strong> list is matched top-to-bottom; the trailing catch-all is required so the tunnel only ever proxies our hostname:</p>
+
+<figure class="code"><figcaption>backend/deploy/cloudflared/config.yml (excerpt)</figcaption><pre>tunnel: &lt;TUNNEL-UUID&gt;
+credentials-file: /home/you/.cloudflared/&lt;TUNNEL-UUID&gt;.json
+
+ingress:
+  - hostname: cantina.example.com
+    service: http://127.0.0.1:8000      <span class="c"># forward to uvicorn on loopback</span>
+  - service: http_status:404            <span class="c"># required catch-all: refuse anything else</span></pre></figure>
+
+<p>The repo ships this config, a matching <code class="inline">cantina-tunnel.service</code> systemd unit, and a step-by-step <code class="inline">README.md</code> under <code class="inline">backend/deploy/cloudflared/</code>. Setup is a one-time <code class="inline">cloudflared tunnel login</code> → <code class="inline">create</code> → fill in the UUID and hostname → <code class="inline">tunnel route dns</code>.</p>
+
+<h3>The cutover: flip the app into "behind TLS" mode</h3>
+<p>Cloudflare terminates TLS at its edge, so the app itself only ever speaks plain HTTP on loopback. Two things change at cutover, both pre-staged as comments in the systemd unit since Chapter 10:</p>
+
+<figure class="code"><figcaption>backend/deploy/cantina.service — uncomment for Phase 3</figcaption><pre>Environment=CANTINA_SECURE_COOKIES=1    <span class="c"># __Host- cookie, Secure flag, HSTS</span>
+Environment=CANTINA_TRUSTED_PROXY=1     <span class="c"># read the real client IP from CF-Connecting-IP</span>
+<span class="c"># bind to loopback so the tunnel/LAN is the ONLY way in:</span>
+ExecStart=/.../venv/bin/uvicorn api:app --host 127.0.0.1 --port 8000</pre></figure>
+
+<div class="box why">
+  <span class="tag">✅ Why it matters — each flag pays for the new environment</span>
+  <p><code class="inline">CANTINA_SECURE_COOKIES=1</code> turns on everything that only makes sense over HTTPS (the <code class="inline">Secure</code> cookie, the <code class="inline">__Host-</code> prefix, HSTS). <code class="inline">CANTINA_TRUSTED_PROXY=1</code> lets the brute-force throttle from Chapter 9 see the <em>real</em> visitor IP that Cloudflare forwards — without it, every request would look like it came from the tunnel and the per-IP limit would be meaningless. And binding to <code class="inline">127.0.0.1</code> means even on your LAN there's no longer an open <code class="inline">0.0.0.0</code> port; the tunnel is the front door.</p>
+</div>
+
+<div class="box pitfall">
+  <span class="tag">⚠️ Pitfall — "502 Bad Gateway" means the origin is down</span>
+  <p>A tunnel can connect to Cloudflare perfectly and still serve <strong>502 Bad Gateway</strong> — that error means the edge reached your <code class="inline">cloudflared</code> but <code class="inline">cloudflared</code> couldn't reach the <em>app</em>. In this build it happened because the <code class="inline">cantina.service</code> wasn't running, so nothing was listening on <code class="inline">127.0.0.1:8000</code>. The tunnel being healthy tells you nothing about the origin: when you see 502, check the app, not Cloudflare. (<code class="inline">curl -sI http://127.0.0.1:8000/</code> on the box confirms the origin in one line.)</p>
+</div>
+
+<div class="box pitfall">
+  <span class="tag">⚠️ Pitfall — user services die when you log out</span>
+  <p>Both the app and the tunnel run as <em>user</em> systemd units. By default a user's services stop the moment that user logs out — and don't start at boot until the next interactive login. For an always-on server that silently brings back the 502 after a reboot. The fix is to enable <strong>lingering</strong> so the user manager runs without a session: <code class="inline">loginctl enable-linger &lt;user&gt;</code>. <code class="inline">enable</code>-ing the units is necessary but <em>not sufficient</em> without it.</p>
+</div>
+
+<h3>Is the app's own login enough? Defense in depth.</h3>
+<p>Once the login page is reachable from the whole internet, it's worth asking honestly whether username + password is sufficient. For a closed family group the answer is "a reasonable baseline" — the password storage and session handling from Chapters 8–9 are solid, and crucially there's <strong>no self-service signup</strong>, so the only public surface is one login form. But two real gaps remain: there's no second factor (a reused, breached password = full access from anywhere), and the brute-force throttle is single-process and in-memory.</p>
+
+<div class="box why">
+  <span class="tag">✅ Why it matters — add a second, free gate at the edge</span>
+  <p>The cheapest large win is <strong>Cloudflare Access</strong> in front of the hostname: an identity check (email one-time code, or Google login) <em>at the edge</em>, before a request ever reaches the login form. Now an attacker needs to pass Cloudflare's gate <em>and</em> know an app password — two independent layers, and the app code didn't change at all. Defense in depth means no single failure (a leaked password, a bug in one check) is game over.</p>
+</div>
+
+<div class="box concept">
+  <span class="tag">💡 Concept — why the barcode proxy is safe to expose</span>
+  <p>One endpoint reaches <em>out</em> to the internet on user input: the barcode lookup (Chapter 5). That pattern can be an <strong>SSRF</strong> risk (tricking the server into fetching an internal address). Here it isn't, for two reasons: the input is validated to be <em>digits only</em> before it's slotted into a fixed URL template, so it can't be twisted into a different host; and the route sits behind the login, so no anonymous visitor can reach it. The one residual concern is a logged-in account using it to hammer OpenFoodFacts through your server's IP — harmless for a family, but a reason a true public launch (a hypothetical Phase 4) would add a per-user rate limit there.</p>
+</div>
+
+<div class="box tryit">
+  <span class="tag">🔧 Try it — verify the cutover from off-network</span>
+  <p>From a phone on cellular (not your Wi-Fi), open <code class="inline">https://your-hostname</code> and check: the page loads and login works with no CSP errors in the console; the session cookie shows <code class="inline">__Host-…; Secure; SameSite=Strict</code> (DevTools → Application → Cookies); <code class="inline">curl -sI https://your-hostname/docs</code> returns <code class="inline">404</code>; and a few bad logins return <code class="inline">429</code> with the <em>real</em> client IP in the app log (proving <code class="inline">CANTINA_TRUSTED_PROXY</code> is wired through).</p>
+</div>
+
+<div class="box pitfall">
+  <span class="tag">⚠️ Pitfall — Cloudflare can rewrite your security headers</span>
+  <p>The app sends a two-year <code class="inline">Strict-Transport-Security</code> header, but the public response showed <code class="inline">max-age=0</code>. The origin was correct — Cloudflare's edge was overriding HSTS based on a dashboard toggle (SSL/TLS → Edge Certificates). When a header looks wrong in the browser, compare it against the origin directly (<code class="inline">curl -sI http://127.0.0.1:8000/</code>) before suspecting your code: a CDN sits in the middle and is allowed to rewrite.</p>
+</div>
+</section>
+
+
+<!-- ============================================================= -->
+<!-- CHAPTER 12 -->
+<!-- ============================================================= -->
+<section class="chapter" id="ch12">
+<h2 class="chap"><span class="num">Chapter 12</span><br>Pitfalls &amp; lessons</h2>
+
+<h3>The transitions at a glance</h3>
+<table>
+  <tr><th>Stage</th><th>The change</th><th>Why</th><th>The pitfall it dodged</th></tr>
+  <tr><td>Ch.2</td><td>pickle → JSON in <code class="inline">.bin</code></td><td>Portable, readable, migratable</td><td>Opaque &amp; unsafe binary format</td></tr>
+  <tr><td>Ch.4</td><td>plain write → atomic write + lock</td><td>Concurrent requests</td><td>Torn/corrupt files</td></tr>
+  <tr><td>Ch.3/4</td><td><code class="inline">1e-9</code> tolerance &amp; <code class="inline">fmtQty</code></td><td>Decimals are imprecise</td><td>Phantom "0.0000001" quantities</td></tr>
+  <tr><td>Ch.6</td><td>tests &amp; config <em>before</em> the rewrite</td><td>Prove behavior unchanged</td><td>Silent regressions in a migration</td></tr>
+  <tr><td>Ch.7</td><td><code class="inline">.bin</code> → SQLite</td><td>Transactions, queries, concurrency</td><td>Flat files don't scale</td></tr>
+  <tr><td>Ch.8</td><td>single user → households</td><td>Privacy between families</td><td>IDOR / cross-tenant leaks</td></tr>
+  <tr><td>Ch.8</td><td><code class="inline">async</code> auth dependency</td><td>ContextVar must reach the handler</td><td>Queries silently using the wrong household</td></tr>
+  <tr><td>Ch.9</td><td>LAN app → internet-ready</td><td>Harden before exposing</td><td>Brute force, CSRF, enumeration, world-readable secrets</td></tr>
+  <tr><td>Ch.11</td><td>LAN-only → reachable anywhere</td><td>Family access off-network, no VPN</td><td>Open router ports; a 502 mistaken for a tunnel fault</td></tr>
+</table>
+
+<h3>A build-it-yourself roadmap</h3>
+<p>If you wanted to build something similar, this order is the lesson:</p>
+<ol>
+  <li><strong>Model the domain first.</strong> Get your core objects and their relationships right before any storage or web code.</li>
+  <li><strong>Funnel storage through a narrow seam.</strong> Two functions (read/write) you can later swap. Use a boring, portable format (JSON) at first.</li>
+  <li><strong>Add the web layer with validation at the edge.</strong> Let a tool like Pydantic reject bad input before it reaches your logic.</li>
+  <li><strong>Build the UI against that API.</strong> Keep it simple; serve it from the same origin to avoid CORS.</li>
+  <li><strong>Write tests <em>before</em> any risky refactor.</strong> Characterization tests turn scary changes into safe ones.</li>
+  <li><strong>Graduate to a real database</strong> only when flat files start to hurt — and let your seam make it a non-event.</li>
+  <li><strong>Add auth and tenancy structurally</strong>, so isolation is enforced in one place, not sprinkled across every endpoint.</li>
+  <li><strong>Harden before you expose.</strong> Threat-model the open internet and close the gaps while you're still safe behind the LAN.</li>
+  <li><strong>Expose through a tunnel, not an open port</strong>, and stack a second gate (an edge identity check) in front of your own login. Reaching the internet is a config step; staying safe there is defense in depth.</li>
+</ol>
+
+<div class="box why">
+  <span class="tag">✅ The meta-lesson</span>
+  <p>Almost every good decision here was about <em>making the next change cheap</em>: the JSON seam made the SQLite swap easy; the tests made it provably safe; the <code class="inline">household_id</code> columns added in Phase 1 made auth a smaller step in Phase 2. Build so that future-you has an easy time.</p>
+</div>
+</section>
+
+
+<!-- ============================================================= -->
+<!-- APPENDICES -->
+<!-- ============================================================= -->
+<section class="chapter" id="appendix-env">
+<h2 class="chap"><span class="num">Appendix A</span><br>Environment variables</h2>
+<table>
+  <tr><th>Variable</th><th>Default</th><th>Purpose</th></tr>
+  <tr><td><code class="inline">CANTINA_DATA_DIR</code></td><td>the <code class="inline">src/</code> dir</td><td>Where <code class="inline">cantina.db</code> and backups live</td></tr>
+  <tr><td><code class="inline">CANTINA_HOST</code></td><td><code class="inline">0.0.0.0</code></td><td>Interface uvicorn binds (use <code class="inline">127.0.0.1</code> behind a proxy)</td></tr>
+  <tr><td><code class="inline">CANTINA_PORT</code></td><td><code class="inline">8000</code></td><td>Port uvicorn binds</td></tr>
+  <tr><td><code class="inline">CANTINA_SESSION_IDLE</code></td><td><code class="inline">86400</code> (24h)</td><td>Idle timeout, seconds</td></tr>
+  <tr><td><code class="inline">CANTINA_SESSION_MAX</code></td><td><code class="inline">2592000</code> (30d)</td><td>Absolute session cap, seconds</td></tr>
+  <tr><td><code class="inline">CANTINA_SECURE_COOKIES</code></td><td><code class="inline">0</code></td><td>Set <code class="inline">1</code> on HTTPS: Secure cookie + <code class="inline">__Host-</code> + HSTS</td></tr>
+  <tr><td><code class="inline">CANTINA_TRUSTED_PROXY</code></td><td><code class="inline">0</code></td><td>Set <code class="inline">1</code> to trust <code class="inline">X-Forwarded-For</code> (only behind a real proxy)</td></tr>
+  <tr><td><code class="inline">CANTINA_LOGIN_MAX_ATTEMPTS</code></td><td><code class="inline">5</code></td><td>Failed logins per window before 429</td></tr>
+  <tr><td><code class="inline">CANTINA_LOGIN_WINDOW</code></td><td><code class="inline">900</code> (15m)</td><td>Throttle window, seconds</td></tr>
+  <tr><td><code class="inline">CANTINA_ENABLE_DOCS</code></td><td><code class="inline">0</code></td><td>Set <code class="inline">1</code> to expose Swagger at <code class="inline">/docs</code></td></tr>
+</table>
+</section>
+
+<section class="chapter" id="appendix-schema">
+<h2 class="chap"><span class="num">Appendix B</span><br>The full SQLite schema</h2>
+<figure class="code no-cap"><pre>households(id, name, created_at)
+
+users(id, household_id→households, email UNIQUE, password_hash,
+      role CHECK(admin|member), created_at)
+
+sessions(token PK, user_id→users, created_at, expires_at, last_used_at)
+
+foods(id, household_id, name, stores(JSON), cost, cals, carbs, protein, fat,
+      descr, pic, brand, serving_size, barcode, fiber, sugar, sodium,
+      UNIQUE(household_id, name))
+
+meals(id, household_id, name, descr, pic, UNIQUE(household_id, name))
+
+meal_ingredients(meal_id→meals, food_name, amount, PK(meal_id, food_name))
+
+inventory(household_id, kind CHECK(food|meal), name, qty,
+          PK(household_id, kind, name))
+
+shopping(household_id, name, amount, PK(household_id, name))
+
+spending(household_id, id, ts, name, qty, unit_cost, total, source,
+         PK(household_id, id))    <span class="c"># id is per-household</span>
+
+meta(key PK, value)              <span class="c"># e.g. legacy_imported = '1'</span></pre></figure>
+<p class="pill">Every data table carries <code class="inline">household_id</code>; deleting a household cascades to its rows. Meals reference ingredients by <em>name</em> so a deleted food doesn't make a recipe row disappear.</p>
+</section>
+
+<section class="chapter" id="glossary">
+<h2 class="chap"><span class="num">Appendix C</span><br>Glossary</h2>
+<dl class="glossary">
+  <dt>API / endpoint</dt><dd>A URL the server answers; the set of them is the app's API.</dd>
+  <dt>Atomic operation</dt><dd>One that fully happens or not at all — no half-states (e.g. <code class="inline">os.replace</code>).</dd>
+  <dt>Characterization test</dt><dd>A test that pins current behavior so a refactor can't silently change it.</dd>
+  <dt>Context variable</dt><dd>A value private to one in-flight request/task; here, the current household.</dd>
+  <dt>CORS</dt><dd>Browser rule restricting calls from one site's page to another site.</dd>
+  <dt>CSP</dt><dd>Content-Security-Policy: tells the browser which sources of scripts/images to trust.</dd>
+  <dt>CSRF</dt><dd>Cross-Site Request Forgery: tricking your browser into making an authenticated request.</dd>
+  <dt>Hashing</dt><dd>One-way scramble; used to store passwords so the original can't be recovered.</dd>
+  <dt>HttpOnly cookie</dt><dd>A cookie JavaScript can't read, limiting theft via injected scripts.</dd>
+  <dt>Idempotent</dt><dd>Running it twice does no more than running it once.</dd>
+  <dt>IDOR</dt><dd>Insecure Direct Object Reference: accessing someone else's record by guessing its id.</dd>
+  <dt>JSON</dt><dd>A text format of nested dicts/lists; the lingua franca of web APIs.</dd>
+  <dt>Multi-tenancy</dt><dd>Many isolated customers sharing one app/database.</dd>
+  <dt>PBKDF2</dt><dd>A deliberately slow, salted password-hashing function.</dd>
+  <dt>Pydantic</dt><dd>Library that validates request data against a declared schema.</dd>
+  <dt>Salt</dt><dd>Random data mixed into a hash so identical passwords hash differently.</dd>
+  <dt>Seam</dt><dd>A narrow boundary you can change behind without disturbing callers.</dd>
+  <dt>Serialization</dt><dd>Turning an in-memory object into bytes for storage/transfer.</dd>
+  <dt>Session</dt><dd>Server-side record that a given browser is logged in; referenced by a cookie token.</dd>
+  <dt>SPA</dt><dd>Single-Page App: one page that JavaScript redraws, fetching only data.</dd>
+  <dt>SQLite</dt><dd>A full relational database contained in a single file, built into Python.</dd>
+  <dt>Transaction</dt><dd>A group of DB changes that all commit or all roll back together.</dd>
+  <dt>uvicorn</dt><dd>The web server that runs a FastAPI app and accepts HTTP connections.</dd>
+  <dt>WAL</dt><dd>Write-Ahead Logging: SQLite mode letting readers and one writer work concurrently.</dd>
+</dl>
+</section>
+
+<footer class="end">
+  <p>Built from the <code class="inline">cantina</code> repository, commits <code class="inline">9d9e013</code> → <code class="inline">12e1382</code> on branch <code class="inline">foundation-sqlite-auth</code>. Code excerpts are taken directly from the source; this guide is for learning and onboarding.</p>
+</footer>
+
+</div><!-- /.wrap -->
+</main>
+
+<script>
+  // Scroll-spy: highlight the TOC entry for the section currently in view.
+  (function () {
+    const links = Array.from(document.querySelectorAll('#toc a'));
+    const byId = new Map(links.map(a => [a.getAttribute('href').slice(1), a]));
+    const targets = Array.from(byId.keys())
+      .map(id => document.getElementById(id))
+      .filter(Boolean);
+
+    const spy = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          links.forEach(a => a.classList.remove('active'));
+          const a = byId.get(e.target.id);
+          if (a) {
+            a.classList.add('active');
+            a.scrollIntoView({ block: 'nearest' });
+          }
+        }
+      });
+    }, { rootMargin: '0px 0px -75% 0px', threshold: 0 });
+    targets.forEach(t => spy.observe(t));
+  })();
+
+  // Add a "copy" button to every code block.
+  document.querySelectorAll('figure.code').forEach(fig => {
+    const pre = fig.querySelector('pre');
+    if (!pre) return;
+    let cap = fig.querySelector('figcaption');
+    if (!cap) {
+      cap = document.createElement('figcaption');
+      fig.insertBefore(cap, pre);
+      fig.classList.remove('no-cap');
+    }
+    const btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.textContent = 'copy';
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(pre.innerText);
+        btn.textContent = 'copied!';
+        setTimeout(() => (btn.textContent = 'copy'), 1200);
+      } catch { btn.textContent = 'select & copy'; }
+    });
+    cap.appendChild(btn);
+  });
+</script>
+</body>
+</html>
