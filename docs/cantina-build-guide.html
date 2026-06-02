@@ -757,6 +757,11 @@ _CACHE: dict[str, dict] = {}          <span class="c"># bounded in-process cache
   <p>Commit <span class="commit">0fb4111</span> discovered the browser's <code class="inline">BarcodeDetector</code> API only exists on some browsers (Chrome/Edge on Android) and needs HTTPS to use the camera at all. iOS Safari has neither. The fix: feature-detect and <strong>hide</strong> the camera button where it won't work, while the manual "type the barcode" path always remains. Always assume a browser feature might be missing.</p>
 </div>
 
+<div class="box why">
+  <span class="tag">✅ Why it matters — polyfill the capability, then mind the CSP cost</span>
+  <p>Once the app went HTTPS (Chapter 11), the camera itself works on iPhones — only the <em>decoder</em> was missing. Since all the scan code was already written against the <code class="inline">BarcodeDetector</code> interface, the fix was to <strong>supply that interface</strong>: lazily load a vendored ZXing-WASM polyfill and hand it to the unchanged scanner whenever the native API is absent. The feature-detect flipped from "is the API present?" to "is a camera usable?" — the polyfill covers the rest. The one real cost is a <em>narrow</em> CSP relaxation: WebAssembly compilation needs <code class="inline">script-src 'self' 'wasm-unsafe-eval'</code>. That token permits WASM only — <strong>not</strong> the far broader <code class="inline">'unsafe-eval'</code> for JavaScript — so it's a measured trade of a little attack surface for a capability the family actually uses. The decoder and its <code class="inline">.wasm</code> are vendored and served same-origin, so nothing is fetched from a CDN at runtime.</p>
+</div>
+
 <figure class="code"><figcaption>frontend/js/app.js — feature detection</figcaption><pre><span class="k">const</span> scanBtn = $(<span class="s">"scan-btn"</span>);
 <span class="k">if</span> (<span class="s">"BarcodeDetector"</span> <span class="k">in</span> window) {
     scanBtn.addEventListener(<span class="s">"click"</span>, onScanBarcode);

@@ -110,7 +110,12 @@ def test_security_headers_present(anon_client) :
     r = anon_client.get("/foods")  # 401, but the middleware still sets headers
     assert r.headers["x-content-type-options"] == "nosniff"
     assert r.headers["x-frame-options"] == "DENY"
-    assert "content-security-policy" in r.headers and "default-src 'self'" in r.headers["content-security-policy"]
+    csp = r.headers.get("content-security-policy", "")
+    assert "default-src 'self'" in csp
+    # WASM barcode decoder (iOS/Firefox camera scanning) needs wasm compilation;
+    # the token permits WASM only, not the broader JS eval.
+    assert "script-src 'self' 'wasm-unsafe-eval'" in csp
+    assert "'unsafe-eval'" not in csp.replace("'wasm-unsafe-eval'", "")
 
 
 def test_api_docs_disabled(anon_client) :

@@ -53,7 +53,13 @@ _SECURITY_HEADERS = {
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": (
-        "default-src 'self'; img-src 'self' data:; object-src 'none'; "
+        # script-src adds 'wasm-unsafe-eval' so the vendored ZXing barcode
+        # decoder can compile its WebAssembly (camera scanning on iOS/Firefox,
+        # which lack the native BarcodeDetector). That token permits WASM
+        # compilation only -- NOT JS eval. The .wasm itself is same-origin, so
+        # default-src 'self' still covers fetching it.
+        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; "
+        "img-src 'self' data:; object-src 'none'; "
         "base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
     ),
 }

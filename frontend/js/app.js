@@ -285,10 +285,10 @@ async function onLookupBarcode() {
 }
 
 async function onScanBarcode() {
-    // We only attach this handler when the BarcodeDetector API is present
-    // (see wireDashboardForms). The user-facing alternative on iOS/Safari is
-    // to type the barcode into the input next to Lookup -- no camera needed.
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    // Attached only when a camera is usable (see wireDashboardForms); the
+    // decoder is the native BarcodeDetector or a polyfill (getBarcodeDetectorCtor).
+    // Without a secure-context camera, the manual Lookup input is the fallback.
+    if (!cameraAvailable()) {
         return setStatus("This page needs HTTPS to access the camera. Type the barcode manually and hit Lookup.");
     }
     await startScannerModal((code) => {
@@ -297,6 +297,34 @@ async function onScanBarcode() {
         form.elements.barcode.value = code;
         return onLookupBarcode();
     });
+}
+
+// True when the browser can open a camera at all: navigator.mediaDevices only
+// exists in a secure context (HTTPS or localhost), so plain-http LAN correctly
+// reports false and we keep the manual barcode-entry path instead.
+function cameraAvailable() {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+// Returns a BarcodeDetector constructor: the native one (Chromium/Android) if
+// present, else a ZXing-WASM polyfill lazily imported from js/vendor/ (iOS
+// Safari, Firefox, desktop have no native API). The polyfill is fetched only on
+// first scan and only where it's needed, so Android users never pay for it.
+let _detectorCtor = null;
+function getBarcodeDetectorCtor() {
+    if ("BarcodeDetector" in window) return Promise.resolve(window.BarcodeDetector);
+    if (!_detectorCtor) {
+        _detectorCtor = import("./vendor/ponyfill.js").then((m) => {
+            // The glue's default locateFile points at a CDN; pin it to our
+            // same-origin copy so the .wasm loads under default-src 'self'.
+            m.setZXingModuleOverrides({
+                locateFile: (path, prefix) =>
+                    path.endsWith(".wasm") ? `/js/vendor/${path}` : prefix + path,
+            });
+            return m.BarcodeDetector;
+        });
+    }
+    return _detectorCtor;
 }
 
 // Camera modal: open a small overlay with the video feed; BarcodeDetector
@@ -312,7 +340,9 @@ async function startScannerModal(onCode) {
     } catch (err) {
         return setStatus(`Camera access denied: ${err.message}`);
     }
-    const video = el("video", { autoplay: true, playsinline: true });
+    // muted is required for inline autoplay on iOS Safari; playsinline keeps it
+    // from hijacking the screen into the fullscreen video player.
+    const video = el("video", { autoplay: true, playsinline: true, muted: true });
     video.srcObject = stream;
     const closeBtn = el("button", { class: "ghost", textContent: "Cancel" });
     const modal = el("div", { class: "scan-modal" }, [
@@ -333,7 +363,8 @@ async function startScannerModal(onCode) {
     };
     closeBtn.addEventListener("click", stop);
 
-    const detector = new window.BarcodeDetector({
+    const Detector = await getBarcodeDetectorCtor();
+    const detector = new Detector({
         formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"],
     });
     const tick = async () => {
@@ -353,7 +384,7 @@ async function startScannerModal(onCode) {
 
 // Scan-to-stock entry point used by the inventory page's Scan button.
 async function onScanToStock() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (!cameraAvailable()) {
         return setStatus("This page needs HTTPS to access the camera. Type the name in the Stock form below instead.");
     }
     await startScannerModal(async (code) => {
@@ -864,7 +895,7 @@ function renderInventoryPage() {
     ]);
 
     const head = [el("h2", { textContent: "Inventory" })];
-    if ("BarcodeDetector" in window) {
+    if (cameraAvailable()) {
         head.push(el("button", { class: "ghost", textContent: "Scan to stock",
             onclick: onScanToStock }));
     }
@@ -1501,14 +1532,14 @@ function wireDashboardForms() {
     $("add-list-form").addEventListener("submit", onAddListFromDashboard);
     $("add-ingredient").addEventListener("click", addIngredientRow);
     $("lookup-btn").addEventListener("click", onLookupBarcode);
-    // Camera scan only works on browsers with BarcodeDetector (Chrome on
-    // Android, Edge on Android). iOS Safari/Chrome don't ship it -- and they
-    // would also need HTTPS to access the camera even if they did. Hide the
-    // button on those browsers so it can't confuse anyone; the manual Lookup
+    // Camera scan needs a usable camera, which requires a secure context (HTTPS
+    // or localhost) -- not the native BarcodeDetector API, since we polyfill that
+    // with ZXing-WASM where it's missing (iOS Safari, Firefox). Over plain-http
+    // LAN cameraAvailable() is false, so we hide the button and the manual Lookup
     // button next to the barcode input still works.
     const scanBtn = $("scan-btn");
     if (scanBtn) {
-        if ("BarcodeDetector" in window) {
+        if (cameraAvailable()) {
             scanBtn.addEventListener("click", onScanBarcode);
         } else {
             scanBtn.hidden = true;
