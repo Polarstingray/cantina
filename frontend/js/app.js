@@ -282,7 +282,16 @@ async function onLookupBarcode() {
         prefillAddFoodForm(result);
         setStatus(`Found “${result.name}${result.brand ? " — " + result.brand : ""}”. Review and save.`, "info");
     } catch (err) {
-        setStatus(`Lookup failed: ${err.message}`);
+        // 404 = the barcode just isn't in OpenFoodFacts. That's not a dead end:
+        // the form is already open with the barcode filled, so invite a manual
+        // add (saving it will store the barcode, so future scans find it).
+        if (err.status === 404) {
+            form.hidden = false;
+            form.elements.barcode.value = code;
+            setStatus(`Barcode ${code} isn't in the food database — fill in the name and macros, then Save to add it to your catalog (future scans will find it).`, "info");
+        } else {
+            setStatus(`Lookup failed: ${err.message}`);
+        }
     }
 }
 
@@ -407,6 +416,21 @@ async function onScanToStock(purchase = false) {
         setStatus(`Scanned unknown barcode ${code} — looking up…`, "info");
         try {
             const result = await api.lookupBarcode(code);
+            // Name fallback: the looked-up product matches a food we already have
+            // (added by typing, so it has no barcode yet). Stock that food and
+            // silently backfill its barcode so the next scan matches it directly --
+            // never re-add it, which would clobber the curated row (add_to_bin is
+            // last-wins by name).
+            const named = state.foods.find((f) => f.name === result.name);
+            if (named) {
+                try {
+                    await api.updateFood({ ...foodBodyFromCatalog(named), barcode: code });
+                    named.barcode = code;
+                } catch { /* matching still works next time; backfill is best-effort */ }
+                openStockPanel(named.name, { logPurchase: purchase });
+                setStatus(`Scanned "${named.name}" — confirm amount${purchase ? " and $ paid" : ""}.`, "info");
+                return;
+            }
             // We need to land on the dashboard for the add-food form to be in the DOM.
             location.hash = "#/";
             await new Promise((r) => setTimeout(r, 50));
@@ -1162,6 +1186,30 @@ function foodBodyFromForm(f, nameOverride) {
         carbs: parseFloat(f.carbs) || 0,
         protein: parseFloat(f.protein) || 0,
         fat: parseFloat(f.fat) || 0,
+        desc: f.desc || "",
+        brand: (f.brand || "").trim(),
+        serving_size: (f.serving_size || "").trim(),
+        barcode: (f.barcode || "").trim(),
+        fiber: parseFloat(f.fiber) || 0,
+        sugar: parseFloat(f.sugar) || 0,
+        sodium: parseFloat(f.sodium) || 0,
+    };
+}
+
+// Build a Food-shape save body from a catalog entry (the to_json shape that
+// /foods returns: stringified numbers + a macros array). Lets us re-save a food
+// with a single field changed (e.g. backfilling a barcode) without round-tripping
+// through the edit form.
+function foodBodyFromCatalog(f) {
+    const m = f.macros || ["0", "0", "0", "0"];
+    return {
+        name: f.name,
+        stores: Array.isArray(f.stores) ? f.stores : [],
+        cost: parseFloat(f.cost) || 0,
+        cals: parseInt(m[0]) || 0,
+        carbs: parseFloat(m[1]) || 0,
+        protein: parseFloat(m[2]) || 0,
+        fat: parseFloat(m[3]) || 0,
         desc: f.desc || "",
         brand: (f.brand || "").trim(),
         serving_size: (f.serving_size || "").trim(),
