@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS foods (
     fiber        REAL    NOT NULL DEFAULT 0,
     sugar        REAL    NOT NULL DEFAULT 0,
     sodium       REAL    NOT NULL DEFAULT 0,
+    category     TEXT    NOT NULL DEFAULT '',
     UNIQUE (household_id, name)
 );
 
@@ -102,6 +103,7 @@ CREATE TABLE IF NOT EXISTS meals (
     name         TEXT    NOT NULL,
     descr        TEXT    NOT NULL DEFAULT '',
     pic          TEXT,
+    category     TEXT    NOT NULL DEFAULT '',
     UNIQUE (household_id, name)
 );
 
@@ -168,6 +170,13 @@ def _migrate(conn) :
         # non-constant default); seed existing rows from created_at.
         conn.execute("ALTER TABLE sessions ADD COLUMN last_used_at TEXT")
         conn.execute("UPDATE sessions SET last_used_at = created_at WHERE last_used_at IS NULL")
+
+    # category on foods/meals (added with the categories feature). A constant
+    # '' default is allowed here, so existing rows backfill automatically.
+    for table in ("foods", "meals") :
+        existing = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if "category" not in existing :
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN category TEXT NOT NULL DEFAULT ''")
 
 
 def _init() :
@@ -294,27 +303,31 @@ def insert_food(conn, food, household_id=HOUSEHOLD_ID) :
     conn.execute(
         '''INSERT INTO foods
                (household_id, name, stores, cost, cals, carbs, protein, fat,
-                descr, pic, brand, serving_size, barcode, fiber, sugar, sodium)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                descr, pic, brand, serving_size, barcode, fiber, sugar, sodium,
+                category)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (household_id, name) DO UPDATE SET
                stores=excluded.stores, cost=excluded.cost, cals=excluded.cals,
                carbs=excluded.carbs, protein=excluded.protein, fat=excluded.fat,
                descr=excluded.descr, pic=excluded.pic, brand=excluded.brand,
                serving_size=excluded.serving_size, barcode=excluded.barcode,
-               fiber=excluded.fiber, sugar=excluded.sugar, sodium=excluded.sodium''',
+               fiber=excluded.fiber, sugar=excluded.sugar, sodium=excluded.sodium,
+               category=excluded.category''',
         (household_id, food.name, json.dumps(food.stores), float(food.cost or 0),
          int(food.cals or 0), float(food.carbs or 0), float(food.protein or 0),
          float(food.fat or 0), food.desc or "", food.pic, food.brand or "",
          food.serving_size or "", food.barcode or "", float(food.fiber or 0),
-         float(food.sugar or 0), float(food.sodium or 0)))
+         float(food.sugar or 0), float(food.sodium or 0),
+         getattr(food, "category", "") or ""))
 
 
-def insert_meal(conn, name, descr, pic, ingredients, household_id=HOUSEHOLD_ID) :
+def insert_meal(conn, name, descr, pic, ingredients, household_id=HOUSEHOLD_ID, category="") :
     '''Upsert a meal and replace its ingredient rows. `ingredients` is {name: amount}.'''
     conn.execute(
-        '''INSERT INTO meals (household_id, name, descr, pic) VALUES (?, ?, ?, ?)
-           ON CONFLICT (household_id, name) DO UPDATE SET descr=excluded.descr, pic=excluded.pic''',
-        (household_id, name, descr or "", pic))
+        '''INSERT INTO meals (household_id, name, descr, pic, category) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT (household_id, name) DO UPDATE SET
+               descr=excluded.descr, pic=excluded.pic, category=excluded.category''',
+        (household_id, name, descr or "", pic, category or ""))
     meal_id = conn.execute(
         "SELECT id FROM meals WHERE household_id = ? AND name = ?",
         (household_id, name)).fetchone()["id"]

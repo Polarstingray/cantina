@@ -249,6 +249,12 @@ button.danger-text:hover:not(:disabled) {
     font-size: 0.78rem;
     color: var(--text);
 }
+/* Category chip: tinted with the accent so it reads apart from store chips. */
+.card .chip.cat {
+    background: rgba(58, 125, 92, 0.16);
+    color: var(--accent, #2f5d46);
+    font-weight: 600;
+}
 .card ul.ingredients-list {
     margin: 0.25rem 0 0;
     padding-left: 1.1rem;

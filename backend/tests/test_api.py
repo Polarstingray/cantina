@@ -40,6 +40,16 @@ def test_food_name_validation_rejects_slashes(client) :
     assert client.post("/foods", json={"name": "a/b"}).status_code == 422
 
 
+def test_food_category_round_trips(client) :
+    r = client.post("/foods", json={"name": "apple", "category": "Produce"})
+    assert r.status_code == 200
+    assert client.get("/foods").json()[0]["category"] == "Produce"
+    # omitting category defaults to empty, not an error
+    client.post("/foods", json={"name": "salt"})
+    salt = [f for f in client.get("/foods").json() if f["name"] == "salt"][0]
+    assert salt["category"] == ""
+
+
 # --- catalog: meals --------------------------------------------------------
 
 def test_meal_requires_known_foods_then_lists(client) :
@@ -57,6 +67,15 @@ def test_meal_requires_known_foods_then_lists(client) :
 
     # /catalog/uses reports meals referencing a food
     assert client.get("/catalog/uses/pasta").json() == ["carbonara"]
+
+
+def test_meal_category_round_trips(client) :
+    client.post("/foods", json={"name": "pasta"})
+    r = client.post("/meals", json={"name": "carbonara", "foods": {"pasta": 1},
+                                    "category": "Dinner"})
+    assert r.status_code == 200
+    meal = client.get("/meals").json()[0]
+    assert meal["category"] == "Dinner"
 
 
 # --- inventory -------------------------------------------------------------
