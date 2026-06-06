@@ -34,4 +34,4 @@ curl -s -X POST "$STINGRAY_URL/api/tickets" \
   }'
 ```
 
-Full API reference: `/path/to/api_guide.md`.
+Full API reference: `/home/penguin/projects/ticketing/api_guide.md`.
