@@ -86,14 +86,22 @@ async def security_middleware(request: Request, call_next) :
     #   - API JSON is per-household + auth-gated -> never store it
     #   - the SPA shell (html/js/css) -> revalidate via etag, so a deploy is
     #     visible on the next load instead of sitting behind a 4h stale copy
+    # path = request.url.path
+    # if path.startswith("/js/vendor/") :
+    #     response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    # elif response.headers.get("content-type", "").startswith("application/json") :
+    #     response.headers.setdefault("Cache-Control", "no-store")
+    # else :
+    #     response.headers.setdefault("Cache-Control", "no-cache")
+    # return response
     path = request.url.path
-    if path.startswith("/js/vendor/") :
+
+    if path.startswith("/js/vendor/"):
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-    elif response.headers.get("content-type", "").startswith("application/json") :
-        response.headers.setdefault("Cache-Control", "no-store")
-    else :
-        response.headers.setdefault("Cache-Control", "no-cache")
-    return response
+    elif response.headers.get("content-type", "").startswith("application/json"):
+        response.headers["Cache-Control"] = "no-store"  # auth-gated; hard override
+    else:
+        response.headers.setdefault("Cache-Control", "no-cache, must-revalidate")
 
 
 # --- request bodies --------------------------------------------------------
@@ -123,6 +131,7 @@ class FoodIn(BaseModel) :
     fiber: float = Field(0.0, ge=0)
     sugar: float = Field(0.0, ge=0)
     sodium: float = Field(0.0, ge=0)            # in mg
+    category: Annotated[str, Field(max_length=40)] = ""
 
     @field_validator("name")
     @classmethod
@@ -132,6 +141,7 @@ class MealIn(BaseModel) :
     name: SafeName
     foods: dict[SafeName, Annotated[float, Field(gt=0)]]   # {food_name: amount}
     desc: Annotated[str, Field(max_length=500)] = ""
+    category: Annotated[str, Field(max_length=40)] = ""
 
     @field_validator("name")
     @classmethod
@@ -198,7 +208,7 @@ def add_food(food: FoodIn) :
     f = Food(food.name, food.stores, food.cost, food.cals,
              food.carbs, food.protein, food.fat, food.desc,
              brand=food.brand, serving_size=food.serving_size, barcode=food.barcode,
-             fiber=food.fiber, sugar=food.sugar, sodium=food.sodium)
+             fiber=food.fiber, sugar=food.sugar, sodium=food.sodium, category=food.category)
     add_to_bin(f.to_json())
     return {"ok" : True}
 
@@ -212,7 +222,7 @@ def update_food(name: str, food: FoodIn) :
     f = Food(food.name, food.stores, food.cost, food.cals,
              food.carbs, food.protein, food.fat, food.desc,
              brand=food.brand, serving_size=food.serving_size, barcode=food.barcode,
-             fiber=food.fiber, sugar=food.sugar, sodium=food.sodium)
+             fiber=food.fiber, sugar=food.sugar, sodium=food.sodium, category=food.category)
     add_to_bin(f.to_json())
     return {"ok" : True}
 
@@ -241,7 +251,7 @@ def add_meal(meal: MealIn) :
         if name not in foods_by_name :
             raise HTTPException(status_code=400, detail=f"unknown food '{name}'")
         ingredients[foods_by_name[name]] = amount
-    m = Meal(meal.name, ingredients, desc=meal.desc)
+    m = Meal(meal.name, ingredients, desc=meal.desc, category=meal.category)
     add_to_bin(m.to_json())
     return {"ok" : True}
 

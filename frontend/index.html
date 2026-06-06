@@ -45,6 +45,10 @@
 
     <div id="status" class="status" hidden></div>
 
+    <!-- Shared autocomplete sources, populated from the catalog on each load. -->
+    <datalist id="category-options"></datalist>
+    <datalist id="meal-food-options"></datalist>
+
     <!-- DASHBOARD ============================================================ -->
     <main id="view-dashboard" class="view">
         <section id="foods-section">
@@ -68,6 +72,7 @@
                     <label>Protein (g)<input name="protein" type="number" step="0.1" min="0" value="0"></label>
                     <label>Fat (g)<input name="fat" type="number" step="0.1" min="0" value="0"></label>
                     <label class="wide">Stores (comma separated)<input name="stores" placeholder="cub, target"></label>
+                    <label>Category<input name="category" list="category-options" placeholder="Produce, Dairy, ..." autocomplete="off"></label>
                     <label class="wide">Description<input name="desc"></label>
                 </div>
                 <details class="disclosure">
@@ -86,6 +91,7 @@
                 </div>
             </form>
 
+            <div id="catalog-filter" class="filter-row" hidden></div>
             <div id="foods" class="cards"></div>
         </section>
 
@@ -98,6 +104,7 @@
             <form id="add-meal-form" class="form" hidden>
                 <div class="form-grid">
                     <label class="wide">Name<input name="name" required></label>
+                    <label>Category<input name="category" list="category-options" placeholder="Dinner, Snack, ..." autocomplete="off"></label>
                     <label class="wide">Description<input name="desc"></label>
                 </div>
                 <div class="ingredients">

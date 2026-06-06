@@ -30,7 +30,7 @@ def read_json_from_bin(db=FOOD_AND_MEALS) :
     with get_conn() as conn :
         rows = conn.execute(
             '''SELECT name, stores, cost, cals, carbs, protein, fat, descr, pic,
-                      brand, serving_size, barcode, fiber, sugar, sodium
+                      brand, serving_size, barcode, fiber, sugar, sodium, category
                FROM foods WHERE household_id = ? ORDER BY id''',
             (current_household_id(),)).fetchall()
         catalog = []
@@ -41,11 +41,11 @@ def read_json_from_bin(db=FOOD_AND_MEALS) :
                         r["carbs"], r["protein"], r["fat"], r["descr"], r["pic"],
                         brand=r["brand"], serving_size=r["serving_size"],
                         barcode=r["barcode"], fiber=r["fiber"], sugar=r["sugar"],
-                        sodium=r["sodium"])
+                        sodium=r["sodium"], category=r["category"])
             catalog.append(food.to_json())
 
         meals = conn.execute(
-            "SELECT id, name, descr, pic FROM meals WHERE household_id = ? ORDER BY id",
+            "SELECT id, name, descr, pic, category FROM meals WHERE household_id = ? ORDER BY id",
             (current_household_id(),)).fetchall()
         for m in meals :
             ing = conn.execute(
@@ -57,6 +57,7 @@ def read_json_from_bin(db=FOOD_AND_MEALS) :
                 "foods": {i["food_name"]: i["amount"] for i in ing},
                 "desc": m["descr"],
                 "pic": m["pic"],
+                "category": m["category"],
             })
         return catalog
 
@@ -77,7 +78,8 @@ def write_json_to_bin(json_list, db=FOOD_AND_MEALS) :
                     insert_food(conn, food, hid)
             elif obj.get("type") == "meal" and obj.get("name") :
                 insert_meal(conn, obj.get("name"), obj.get("desc") or "",
-                            obj.get("pic"), obj.get("foods") or {}, hid)
+                            obj.get("pic"), obj.get("foods") or {}, hid,
+                            category=obj.get("category") or "")
 
 
 # Rebuild Food and Meal objects from the json list. Foods are built first so

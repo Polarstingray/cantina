@@ -108,6 +108,48 @@ const fmtMacros = (m) =>
 // DASHBOARD renders
 // ===========================================================================
 
+// Catalog category filter (dashboard). "" = show everything.
+let catalogCategory = "";
+
+// Distinct, sorted category labels across foods + meals.
+function catalogCategories() {
+    const set = new Set();
+    for (const f of state.foods) if (f.category) set.add(f.category);
+    for (const m of state.meals) if (m.category) set.add(m.category);
+    return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+function inCatalogCategory(item) {
+    return !catalogCategory || (item.category || "") === catalogCategory;
+}
+
+// Refresh the shared <datalist>s (category suggestions + meal-ingredient names)
+// and the dashboard category filter bar from current state. Called before the
+// dashboard re-renders. If a previously selected category no longer exists
+// (e.g. its last item was deleted), fall back to "All".
+function refreshCatalogAux() {
+    const cats = catalogCategories();
+    if (catalogCategory && !cats.includes(catalogCategory)) catalogCategory = "";
+
+    const catDl = $("category-options");
+    if (catDl) catDl.replaceChildren(...cats.map((c) => el("option", { value: c })));
+    const foodDl = $("meal-food-options");
+    if (foodDl) foodDl.replaceChildren(...state.foods.map((f) => el("option", { value: f.name })));
+
+    const bar = $("catalog-filter");
+    if (bar) {
+        bar.hidden = cats.length === 0;
+        if (cats.length) {
+            const btn = (key, label) => el("button", {
+                class: "ghost" + (key === catalogCategory ? " active" : ""),
+                textContent: label,
+                onclick: () => { catalogCategory = key; renderCurrentRoute(); },
+            });
+            bar.replaceChildren(btn("", "All"), ...cats.map((c) => btn(c, c)));
+        }
+    }
+}
+
 function renderFoods(foods) {
     const container = $("foods");
     container.innerHTML = "";
@@ -125,6 +167,8 @@ function renderFoods(foods) {
                     onclick: (e) => { e.preventDefault(); e.stopPropagation(); onDeleteFood(f.name); } }),
             ]),
             f.brand && el("div", { class: "desc brand", textContent: f.brand }),
+            f.category && el("div", { class: "stores" }, [
+                el("span", { class: "chip cat", textContent: f.category })]),
             f.desc && el("div", { class: "desc", textContent: f.desc }),
             el("div", { class: "cost", textContent: `$${parseFloat(f.cost).toFixed(2)}` }),
             el("div", { class: "macros", textContent: fmtMacros(macros) }),
@@ -152,6 +196,8 @@ function renderMeals(meals) {
                 el("button", { class: "icon ghost danger-text", title: "delete", textContent: "×",
                     onclick: (e) => { e.preventDefault(); e.stopPropagation(); onDeleteMeal(m.name); } }),
             ]),
+            m.category && el("div", { class: "stores" }, [
+                el("span", { class: "chip cat", textContent: m.category })]),
             m.desc && el("div", { class: "desc", textContent: m.desc }),
             el("div", { class: "cost", textContent: `$${mealCost(m).toFixed(2)}` }),
             el("ul", { class: "ingredients-list" },
@@ -282,7 +328,16 @@ async function onLookupBarcode() {
         prefillAddFoodForm(result);
         setStatus(`Found “${result.name}${result.brand ? " — " + result.brand : ""}”. Review and save.`, "info");
     } catch (err) {
-        setStatus(`Lookup failed: ${err.message}`);
+        // 404 = the barcode just isn't in OpenFoodFacts. That's not a dead end:
+        // the form is already open with the barcode filled, so invite a manual
+        // add (saving it will store the barcode, so future scans find it).
+        if (err.status === 404) {
+            form.hidden = false;
+            form.elements.barcode.value = code;
+            setStatus(`Barcode ${code} isn't in the food database — fill in the name and macros, then Save to add it to your catalog (future scans will find it).`, "info");
+        } else {
+            setStatus(`Lookup failed: ${err.message}`);
+        }
     }
 }
 
@@ -407,6 +462,21 @@ async function onScanToStock(purchase = false) {
         setStatus(`Scanned unknown barcode ${code} — looking up…`, "info");
         try {
             const result = await api.lookupBarcode(code);
+            // Name fallback: the looked-up product matches a food we already have
+            // (added by typing, so it has no barcode yet). Stock that food and
+            // silently backfill its barcode so the next scan matches it directly --
+            // never re-add it, which would clobber the curated row (add_to_bin is
+            // last-wins by name).
+            const named = state.foods.find((f) => f.name === result.name);
+            if (named) {
+                try {
+                    await api.updateFood({ ...foodBodyFromCatalog(named), barcode: code });
+                    named.barcode = code;
+                } catch { /* matching still works next time; backfill is best-effort */ }
+                openStockPanel(named.name, { logPurchase: purchase });
+                setStatus(`Scanned "${named.name}" — confirm amount${purchase ? " and $ paid" : ""}.`, "info");
+                return;
+            }
             // We need to land on the dashboard for the add-food form to be in the DOM.
             location.hash = "#/";
             await new Promise((r) => setTimeout(r, 50));
@@ -563,6 +633,7 @@ function renderFoodDetail(name) {
                 onclick: () => onDeleteFood(f.name) }),
         ]),
         f.brand && el("p", { class: "desc brand", textContent: f.brand }),
+        f.category && el("p", { class: "muted", textContent: `Category: ${f.category}` }),
         f.desc && el("p", { class: "desc", textContent: f.desc }),
         f.serving_size && el("p", { class: "muted",
             textContent: `Per serving: ${f.serving_size}` }),
@@ -655,6 +726,9 @@ function renderFoodDetail(name) {
                 el("input", { name: "fat", type: "number", step: "0.1", min: "0", value: String(macros[3]) })]),
             el("label", { class: "wide" }, [document.createTextNode("Stores (comma separated)"),
                 el("input", { name: "stores", value: stores.join(", ") })]),
+            el("label", {}, [document.createTextNode("Category"),
+                el("input", { name: "category", list: "category-options", autocomplete: "off",
+                    value: f.category || "" })]),
             el("label", { class: "wide" }, [document.createTextNode("Description"),
                 el("input", { name: "desc", value: f.desc || "" })]),
         ]),
@@ -708,6 +782,7 @@ function renderMealDetail(name) {
             el("button", { class: "ghost danger-text", textContent: "Delete",
                 onclick: () => onDeleteMeal(m.name) }),
         ]),
+        m.category && el("p", { class: "muted", textContent: `Category: ${m.category}` }),
         m.desc && el("p", { class: "desc", textContent: m.desc }),
         el("div", { class: "stats" }, [
             el("div", {}, [el("span", { class: "muted", textContent: "Total cost: " }),
@@ -1169,6 +1244,32 @@ function foodBodyFromForm(f, nameOverride) {
         fiber: parseFloat(f.fiber) || 0,
         sugar: parseFloat(f.sugar) || 0,
         sodium: parseFloat(f.sodium) || 0,
+        category: (f.category || "").trim(),
+    };
+}
+
+// Build a Food-shape save body from a catalog entry (the to_json shape that
+// /foods returns: stringified numbers + a macros array). Lets us re-save a food
+// with a single field changed (e.g. backfilling a barcode) without round-tripping
+// through the edit form.
+function foodBodyFromCatalog(f) {
+    const m = f.macros || ["0", "0", "0", "0"];
+    return {
+        name: f.name,
+        stores: Array.isArray(f.stores) ? f.stores : [],
+        cost: parseFloat(f.cost) || 0,
+        cals: parseInt(m[0]) || 0,
+        carbs: parseFloat(m[1]) || 0,
+        protein: parseFloat(m[2]) || 0,
+        fat: parseFloat(m[3]) || 0,
+        desc: f.desc || "",
+        brand: (f.brand || "").trim(),
+        serving_size: (f.serving_size || "").trim(),
+        barcode: (f.barcode || "").trim(),
+        fiber: parseFloat(f.fiber) || 0,
+        sugar: parseFloat(f.sugar) || 0,
+        sodium: parseFloat(f.sodium) || 0,
+        category: (f.category || "").trim(),
     };
 }
 
@@ -1237,12 +1338,14 @@ async function onUpdateFood(form, name) {
 
 function addIngredientRow() {
     const rows = $("ingredient-rows");
-    const select = el("select", { name: "food" },
-        state.foods.map((f) => el("option", { value: f.name, textContent: f.name })));
+    // Typeahead over the catalog (datalist populated in refreshCatalogAux) instead
+    // of a long scroll-only <select>; the user can type to filter or pick from the list.
+    const food = el("input", { name: "food", list: "meal-food-options", autocomplete: "off",
+        placeholder: "type or pick a food" });
     const amount = el("input", { type: "number", min: "0.5", step: "0.5", value: "1", name: "amount" });
     const remove = el("button", { type: "button", class: "icon ghost", textContent: "×",
         onclick: () => row.remove() });
-    const row = el("div", { class: "ingredient-row" }, [select, amount, remove]);
+    const row = el("div", { class: "ingredient-row" }, [food, amount, remove]);
     rows.appendChild(row);
 }
 
@@ -1251,17 +1354,18 @@ async function onAddMeal(e) {
     const form = e.target;
     const name = form.elements["name"].value.trim();
     const desc = form.elements["desc"].value;
+    const category = (form.elements["category"].value || "").trim();
     if (!name) return setStatus("Meal needs a name.");
     const ingredients = {};
     for (const row of $("ingredient-rows").querySelectorAll(".ingredient-row")) {
-        const fname = row.querySelector("select").value;
-        const amt = parseFloat(row.querySelector("input").value) || 0;
+        const fname = row.querySelector('[name="food"]').value.trim();
+        const amt = parseFloat(row.querySelector('[name="amount"]').value) || 0;
         if (!fname || amt <= 0) continue;
         ingredients[fname] = (ingredients[fname] || 0) + amt;
     }
     if (!Object.keys(ingredients).length) return setStatus("Meal needs at least one ingredient.");
     try {
-        await api.addMeal({ name, foods: ingredients, desc });
+        await api.addMeal({ name, foods: ingredients, desc, category });
         form.reset();
         $("ingredient-rows").innerHTML = "";
         form.hidden = true;
@@ -1422,8 +1526,9 @@ function renderCurrentRoute() {
     if (parts.length === 0) {
         showView("view-dashboard");
         setActiveNav("/");
-        renderFoods(state.foods);
-        renderMeals(state.meals);
+        refreshCatalogAux();
+        renderFoods(state.foods.filter(inCatalogCategory));
+        renderMeals(state.meals.filter(inCatalogCategory));
         renderInventory(state.inventory);
         renderListDashboard(state.list);
         renderMenu(state.menu);

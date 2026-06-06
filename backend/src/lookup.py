@@ -55,14 +55,17 @@ def _map_off_to_food(payload: dict) -> dict | None :
         "brand": (p.get("brands") or "").strip()[:80],
         "serving_size": (p.get("serving_size") or "").strip()[:80],
         "barcode": (p.get("code") or "").strip(),
+        # Round macros to 1 decimal so the prefilled values satisfy the add-food
+        # form's step="0.1" inputs -- OpenFoodFacts often returns finer precision
+        # (e.g. fat 1.205), which HTML5 validation would otherwise reject on save.
         "cals": int(round(_pick_num(nutriments, "energy-kcal"))),
-        "carbs": _pick_num(nutriments, "carbohydrates"),
-        "protein": _pick_num(nutriments, "proteins"),
-        "fat": _pick_num(nutriments, "fat"),
-        "fiber": _pick_num(nutriments, "fiber"),
-        "sugar": _pick_num(nutriments, "sugars"),
+        "carbs": round(_pick_num(nutriments, "carbohydrates"), 1),
+        "protein": round(_pick_num(nutriments, "proteins"), 1),
+        "fat": round(_pick_num(nutriments, "fat"), 1),
+        "fiber": round(_pick_num(nutriments, "fiber"), 1),
+        "sugar": round(_pick_num(nutriments, "sugars"), 1),
         # OpenFoodFacts returns sodium in grams; convert to mg.
-        "sodium": _pick_num(nutriments, "sodium") * 1000.0,
+        "sodium": round(_pick_num(nutriments, "sodium") * 1000.0, 1),
         # cost + stores stay empty -- user supplies those locally.
         "cost": 0.0,
         "stores": [],
@@ -113,10 +116,11 @@ def lookup(code: str) -> dict | None :
     if food is None :
         return None
 
-    # Best-effort price overlay; silent miss leaves cost=0.0.
+    # Best-effort price overlay; silent miss leaves cost=0.0. Round to cents to
+    # match the cost field's step="0.01".
     price = _fetch_prices(code)
     if price is not None :
-        food["cost"] = price
+        food["cost"] = round(price, 2)
 
     if len(_CACHE) >= _CACHE_LIMIT :
         # cheap eviction: drop the oldest insertion (dicts are insertion-ordered)
