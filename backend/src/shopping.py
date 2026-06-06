@@ -8,27 +8,33 @@ shopping.py
     minimal Food(name) entry so the rest of the app has one name system.
 '''
 
-import os
-from grocery import (
-    read_json_from_bin, write_json_to_bin, FOOD_AND_MEALS,
-    jsons_to_objects, add_to_bin,
-)
+from grocery import read_json_from_bin, FOOD_AND_MEALS, jsons_to_objects, add_to_bin
 from foods import Food
+from config import data_path
+from db import get_conn, current_household_id
 import inventory
 
-SHOPPING = os.path.join(os.path.dirname(__file__), "shopping.bin")
+SHOPPING = data_path("shopping.bin")
 
 
 # --- persistence -----------------------------------------------------------
+# {name: amount} backed by the SQLite `shopping` table (see db.py).
 
 def read_list(db=SHOPPING) :
-    data = read_json_from_bin(db)
-    if not data :                       # read_json_from_bin returns [] when empty
-        return {}
-    return data
+    with get_conn() as conn :
+        rows = conn.execute(
+            "SELECT name, amount FROM shopping WHERE household_id = ?",
+            (current_household_id(),)).fetchall()
+    return {r["name"] : r["amount"] for r in rows}
 
 def write_list(list_, db=SHOPPING) :
-    write_json_to_bin(list_, db)
+    hid = current_household_id()
+    with get_conn() as conn :
+        conn.execute("DELETE FROM shopping WHERE household_id = ?", (hid,))
+        for name, amount in list_.items() :
+            conn.execute(
+                "INSERT INTO shopping (household_id, name, amount) VALUES (?, ?, ?)",
+                (hid, name, float(amount)))
 
 
 # --- auto-stub -------------------------------------------------------------

@@ -7,7 +7,25 @@
     <link rel="stylesheet" href="css/styles.css">
     <script type="module" src="js/app.js"></script>
 </head>
-<body>
+<body class="logged-out">
+    <!-- LOGIN SCREEN (shown when body.logged-out) ============================ -->
+    <div id="login-screen">
+        <form id="login-form" class="form login-form">
+            <h1>Cantina</h1>
+            <p class="tagline">sign in to your household</p>
+            <label class="wide">Email
+                <input name="email" type="email" autocomplete="username" required>
+            </label>
+            <label class="wide">Password
+                <input name="password" type="password" autocomplete="current-password" required>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Sign in</button>
+            </div>
+            <p id="login-error" class="login-error" hidden></p>
+        </form>
+    </div>
+
     <header>
         <div class="header-top">
             <h1><a href="#/">Cantina</a></h1>
@@ -17,6 +35,10 @@
                 <a href="#/inventory" data-route="/inventory">Inventory</a>
                 <a href="#/spending" data-route="/spending">Spending</a>
             </nav>
+            <div class="user-area" id="user-area" hidden>
+                <span id="user-email" class="muted"></span>
+                <button type="button" id="logout-btn" class="ghost">Log out</button>
+            </div>
         </div>
         <p class="tagline">household grocery &amp; meal tracker</p>
     </header>

@@ -1,0 +1,23 @@
+# Runs the Cloudflare tunnel that fronts Cantina. Install as a user unit so it
+# starts with your session (pairs with cantina.service):
+#   cp cantina-tunnel.service ~/.config/systemd/user/
+#   systemctl --user enable --now cantina-tunnel.service
+#
+# Prereqs (see README.md in this directory): cloudflared installed, a tunnel
+# created, this directory's config.yml filled in, and the DNS route added.
+[Unit]
+Description=Cloudflare tunnel for Cantina
+After=network-online.target cantina.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# --config points at the checked-in config so there's one source of truth.
+ExecStart=/usr/bin/cloudflared tunnel --config /home/penguin/projects/cantina/backend/deploy/cloudflared/config.yml run
+Restart=on-failure
+RestartSec=5
+# The tunnel only needs to read its config + credentials and dial out.
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

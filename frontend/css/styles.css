@@ -625,3 +625,25 @@ button.danger-text:hover:not(:disabled) {
     .detail-head { flex-wrap: wrap; }
     .inv-row { flex-wrap: wrap; }
 }
+
+/* --- auth / login ----------------------------------------------------- */
+/* Logged out: hide the whole app chrome and show only the login card. */
+body.logged-out header,
+body.logged-out main,
+body.logged-out #status { display: none; }
+body:not(.logged-out) #login-screen { display: none; }
+
+#login-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+.login-form { width: 100%; max-width: 360px; }
+.login-form h1 { margin: 0 0 0.15rem; font-size: 1.6rem; text-align: center; }
+.login-form .tagline { margin: 0 0 1rem; color: var(--muted); text-align: center; }
+.login-error { margin: 0.75rem 0 0; color: var(--danger); font-size: 0.9rem; }
+
+.user-area { display: flex; align-items: center; gap: 0.6rem; }
+#user-email { font-size: 0.9rem; }
