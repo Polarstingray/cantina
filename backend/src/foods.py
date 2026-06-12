@@ -1,4 +1,4 @@
-import sys
+import logging
 
 '''
 food and meal objects here
@@ -6,6 +6,8 @@ food and meal objects here
 food - *name, store/s, cost, macros, description, later on a picture
 meal - *name, list of foods, helper functions for calculating total cost and macros
 '''
+
+logger = logging.getLogger(__name__)
 
 class Food:
     def __init__(self, name, stores=None, cost=0.0, cals=0, carbs=0.0, prot=0.0, fat=0.0, desc="", pic=None,
@@ -121,7 +123,7 @@ class Meal:
         for name, amount in meal_json.get("foods").items() :
             food = food_catalog.get(name)
             if not food :
-                print(f"Food '{name}' not found in database, skipping", file=sys.stderr)
+                logger.warning("Food '%s' not found in database, skipping", name)
                 continue
             foods[food] = amount
 
@@ -142,10 +144,10 @@ class Meal:
 
     def add_food(self, food, amount=1) :
         if not food :
-            print("Must add a food with a name", file=sys.stderr)
+            logger.warning("Must add a food with a name")
             return -1
         if (amount <= 0) :
-            print("Invalid amount to add", file=sys.stderr)
+            logger.warning("Invalid amount to add")
             return -1
         
         if food in self.foods :
@@ -160,10 +162,10 @@ class Meal:
 
     def remove_food(self, food, amount=1) :
         if not food :
-            print("Must remove a food with a name", file=sys.stderr)
+            logger.warning("Must remove a food with a name")
             return -1
         if (amount <= 0) :
-            print("Invalid amount to remove", file=sys.stderr)
+            logger.warning("Invalid amount to remove")
             return -1
 
         if food in self.foods :
@@ -172,11 +174,11 @@ class Meal:
             else :
                 self.foods[food] -= amount
         else :
-            print("Food item not in meal", file=sys.stderr)
+            logger.warning("Food item not in meal")
             return -1
         if self.foods[food] <= 1e-9 :
             self.foods.pop(food, None)
-            print("Removing food item from ingredient list")
+            logger.debug("Removing food item from ingredient list")
         return 0
 
     def get_macros(self) :
