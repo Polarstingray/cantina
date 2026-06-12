@@ -123,7 +123,7 @@ def unique_list(dat1, dat2) :
     return unique_objects
 
 def add_to_bin(item, db=FOOD_AND_MEALS) :
-    old_db = read_json_from_bin()
+    old_db = read_json_from_bin(db)
     old_db.append(item)
     new_db = objects_to_jsons(jsons_to_objects(old_db)) # ensures no duplicates
     write_json_to_bin(new_db, db)
