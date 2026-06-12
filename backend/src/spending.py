@@ -48,6 +48,11 @@ def read_entries(since=None, until=None, db=SPENDING) :
     entries = list(read_entries_raw(db))
     s = _parse_date(since)
     u = _parse_date(until)
+    # A date-only 'until' (e.g. "2026-06-12") parses to start-of-day, which
+    # would exclude entries recorded later that same day. Treat it as an
+    # inclusive end-date by advancing the bound to the very end of that day.
+    if u is not None and isinstance(until, str) and len(until) == 10 :
+        u = u + timedelta(days=1) - timedelta(microseconds=1)
     if s or u :
         out = []
         for e in entries :
