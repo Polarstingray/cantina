@@ -23,11 +23,13 @@ const state = {
     list: {},
 };
 
-// One-shot flag: when a scan-to-stock lands on an unknown barcode, we route
-// the user through the add-food prefill flow. After they Save the new food,
-// this flag triggers a follow-up `addStock(name, 1, "food")` so the scanning
-// gesture ends up actually stocking the thing. Cleared after the follow-up.
-let pendingStockOnSave = false;
+// One-shot flag: when a scan lands on an unknown barcode, we route the user
+// through the add-food prefill flow. After they Save the new food, this triggers
+// a follow-up `addStock(name, 1, "food")` so the scanning gesture ends up
+// actually stocking the thing -- and, if the scan was a "Scan a purchase",
+// also logs a $cost spending entry. Holds {purchase: bool} or null; cleared
+// after the follow-up.
+let pendingStockOnSave = null;
 
 // ===========================================================================
 // helpers
@@ -106,6 +108,48 @@ const fmtMacros = (m) =>
 // DASHBOARD renders
 // ===========================================================================
 
+// Catalog category filter (dashboard). "" = show everything.
+let catalogCategory = "";
+
+// Distinct, sorted category labels across foods + meals.
+function catalogCategories() {
+    const set = new Set();
+    for (const f of state.foods) if (f.category) set.add(f.category);
+    for (const m of state.meals) if (m.category) set.add(m.category);
+    return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+function inCatalogCategory(item) {
+    return !catalogCategory || (item.category || "") === catalogCategory;
+}
+
+// Refresh the shared <datalist>s (category suggestions + meal-ingredient names)
+// and the dashboard category filter bar from current state. Called before the
+// dashboard re-renders. If a previously selected category no longer exists
+// (e.g. its last item was deleted), fall back to "All".
+function refreshCatalogAux() {
+    const cats = catalogCategories();
+    if (catalogCategory && !cats.includes(catalogCategory)) catalogCategory = "";
+
+    const catDl = $("category-options");
+    if (catDl) catDl.replaceChildren(...cats.map((c) => el("option", { value: c })));
+    const foodDl = $("meal-food-options");
+    if (foodDl) foodDl.replaceChildren(...state.foods.map((f) => el("option", { value: f.name })));
+
+    const bar = $("catalog-filter");
+    if (bar) {
+        bar.hidden = cats.length === 0;
+        if (cats.length) {
+            const btn = (key, label) => el("button", {
+                class: "ghost" + (key === catalogCategory ? " active" : ""),
+                textContent: label,
+                onclick: () => { catalogCategory = key; renderCurrentRoute(); },
+            });
+            bar.replaceChildren(btn("", "All"), ...cats.map((c) => btn(c, c)));
+        }
+    }
+}
+
 function renderFoods(foods) {
     const container = $("foods");
     container.innerHTML = "";
@@ -123,6 +167,8 @@ function renderFoods(foods) {
                     onclick: (e) => { e.preventDefault(); e.stopPropagation(); onDeleteFood(f.name); } }),
             ]),
             f.brand && el("div", { class: "desc brand", textContent: f.brand }),
+            f.category && el("div", { class: "stores" }, [
+                el("span", { class: "chip cat", textContent: f.category })]),
             f.desc && el("div", { class: "desc", textContent: f.desc }),
             el("div", { class: "cost", textContent: `$${parseFloat(f.cost).toFixed(2)}` }),
             el("div", { class: "macros", textContent: fmtMacros(macros) }),
@@ -150,6 +196,8 @@ function renderMeals(meals) {
                 el("button", { class: "icon ghost danger-text", title: "delete", textContent: "×",
                     onclick: (e) => { e.preventDefault(); e.stopPropagation(); onDeleteMeal(m.name); } }),
             ]),
+            m.category && el("div", { class: "stores" }, [
+                el("span", { class: "chip cat", textContent: m.category })]),
             m.desc && el("div", { class: "desc", textContent: m.desc }),
             el("div", { class: "cost", textContent: `$${mealCost(m).toFixed(2)}` }),
             el("ul", { class: "ingredients-list" },
@@ -280,15 +328,24 @@ async function onLookupBarcode() {
         prefillAddFoodForm(result);
         setStatus(`Found “${result.name}${result.brand ? " — " + result.brand : ""}”. Review and save.`, "info");
     } catch (err) {
-        setStatus(`Lookup failed: ${err.message}`);
+        // 404 = the barcode just isn't in OpenFoodFacts. That's not a dead end:
+        // the form is already open with the barcode filled, so invite a manual
+        // add (saving it will store the barcode, so future scans find it).
+        if (err.status === 404) {
+            form.hidden = false;
+            form.elements.barcode.value = code;
+            setStatus(`Barcode ${code} isn't in the food database — fill in the name and macros, then Save to add it to your catalog (future scans will find it).`, "info");
+        } else {
+            setStatus(`Lookup failed: ${err.message}`);
+        }
     }
 }
 
 async function onScanBarcode() {
-    // We only attach this handler when the BarcodeDetector API is present
-    // (see wireDashboardForms). The user-facing alternative on iOS/Safari is
-    // to type the barcode into the input next to Lookup -- no camera needed.
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    // Attached only when a camera is usable (see wireDashboardForms); the
+    // decoder is the native BarcodeDetector or a polyfill (getBarcodeDetectorCtor).
+    // Without a secure-context camera, the manual Lookup input is the fallback.
+    if (!cameraAvailable()) {
         return setStatus("This page needs HTTPS to access the camera. Type the barcode manually and hit Lookup.");
     }
     await startScannerModal((code) => {
@@ -297,6 +354,34 @@ async function onScanBarcode() {
         form.elements.barcode.value = code;
         return onLookupBarcode();
     });
+}
+
+// True when the browser can open a camera at all: navigator.mediaDevices only
+// exists in a secure context (HTTPS or localhost), so plain-http LAN correctly
+// reports false and we keep the manual barcode-entry path instead.
+function cameraAvailable() {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+// Returns a BarcodeDetector constructor: the native one (Chromium/Android) if
+// present, else a ZXing-WASM polyfill lazily imported from js/vendor/ (iOS
+// Safari, Firefox, desktop have no native API). The polyfill is fetched only on
+// first scan and only where it's needed, so Android users never pay for it.
+let _detectorCtor = null;
+function getBarcodeDetectorCtor() {
+    if ("BarcodeDetector" in window) return Promise.resolve(window.BarcodeDetector);
+    if (!_detectorCtor) {
+        _detectorCtor = import("./vendor/ponyfill.js").then((m) => {
+            // The glue's default locateFile points at a CDN; pin it to our
+            // same-origin copy so the .wasm loads under default-src 'self'.
+            m.setZXingModuleOverrides({
+                locateFile: (path, prefix) =>
+                    path.endsWith(".wasm") ? `/js/vendor/${path}` : prefix + path,
+            });
+            return m.BarcodeDetector;
+        });
+    }
+    return _detectorCtor;
 }
 
 // Camera modal: open a small overlay with the video feed; BarcodeDetector
@@ -312,7 +397,9 @@ async function startScannerModal(onCode) {
     } catch (err) {
         return setStatus(`Camera access denied: ${err.message}`);
     }
-    const video = el("video", { autoplay: true, playsinline: true });
+    // muted is required for inline autoplay on iOS Safari; playsinline keeps it
+    // from hijacking the screen into the fullscreen video player.
+    const video = el("video", { autoplay: true, playsinline: true, muted: true });
     video.srcObject = stream;
     const closeBtn = el("button", { class: "ghost", textContent: "Cancel" });
     const modal = el("div", { class: "scan-modal" }, [
@@ -333,7 +420,8 @@ async function startScannerModal(onCode) {
     };
     closeBtn.addEventListener("click", stop);
 
-    const detector = new window.BarcodeDetector({
+    const Detector = await getBarcodeDetectorCtor();
+    const detector = new Detector({
         formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"],
     });
     const tick = async () => {
@@ -351,23 +439,44 @@ async function startScannerModal(onCode) {
     setTimeout(tick, 500);    // small delay so the video has a frame
 }
 
-// Scan-to-stock entry point used by the inventory page's Scan button.
-async function onScanToStock() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+// Scan entry point for the inventory page's two Scan buttons.
+//   purchase=false ("Scan to stock")    -> add to inventory only
+//   purchase=true  ("Scan a purchase")  -> add to inventory AND log spending
+// For a known item we open the stock panel (the purchase box reflects `purchase`);
+// for an unknown item we detour through add-food and carry the intent to save.
+async function onScanToStock(purchase = false) {
+    if (!cameraAvailable()) {
         return setStatus("This page needs HTTPS to access the camera. Type the name in the Stock form below instead.");
     }
+    const verb = purchase ? "purchase" : "stock";
     await startScannerModal(async (code) => {
         // Match by stored barcode on existing catalog foods first.
         const match = state.foods.find((f) => (f.barcode || "") === code);
         if (match) {
-            openStockPanel(match.name);
-            setStatus(`Scanned "${match.name}" — pick amount and confirm.`, "info");
+            openStockPanel(match.name, { logPurchase: purchase });
+            setStatus(`Scanned "${match.name}" — confirm amount${purchase ? " and $ paid" : ""}.`, "info");
             return;
         }
-        // Not in catalog: route to add-food prefill, then auto-stock 1 on save.
+        // Not in catalog: route to add-food prefill, then auto-stock 1 (and, for
+        // a purchase scan, log spending at the cost entered) on save.
         setStatus(`Scanned unknown barcode ${code} — looking up…`, "info");
         try {
             const result = await api.lookupBarcode(code);
+            // Name fallback: the looked-up product matches a food we already have
+            // (added by typing, so it has no barcode yet). Stock that food and
+            // silently backfill its barcode so the next scan matches it directly --
+            // never re-add it, which would clobber the curated row (add_to_bin is
+            // last-wins by name).
+            const named = state.foods.find((f) => f.name === result.name);
+            if (named) {
+                try {
+                    await api.updateFood({ ...foodBodyFromCatalog(named), barcode: code });
+                    named.barcode = code;
+                } catch { /* matching still works next time; backfill is best-effort */ }
+                openStockPanel(named.name, { logPurchase: purchase });
+                setStatus(`Scanned "${named.name}" — confirm amount${purchase ? " and $ paid" : ""}.`, "info");
+                return;
+            }
             // We need to land on the dashboard for the add-food form to be in the DOM.
             location.hash = "#/";
             await new Promise((r) => setTimeout(r, 50));
@@ -375,8 +484,8 @@ async function onScanToStock() {
             form.hidden = false;
             form.elements.barcode.value = code;
             prefillAddFoodForm(result);
-            pendingStockOnSave = true;
-            setStatus(`Scanned ${code}: review and Save — it'll be stocked automatically.`, "info");
+            pendingStockOnSave = { purchase };
+            setStatus(`Scanned ${code}: review${purchase ? " (set the $ cost)" : ""} and Save — it'll be ${verb === "purchase" ? "stocked and logged" : "stocked"} automatically.`, "info");
         } catch (err) {
             // Unknown to OpenFoodFacts too -- give them a starting point.
             location.hash = "#/";
@@ -384,21 +493,23 @@ async function onScanToStock() {
             const form = $("add-food-form");
             form.hidden = false;
             form.elements.barcode.value = code;
-            pendingStockOnSave = true;
-            setStatus(`Scanned ${code}: not in food database. Fill the name + macros, Save, and it'll be stocked.`, "info");
+            pendingStockOnSave = { purchase };
+            setStatus(`Scanned ${code}: not in food database. Fill name + macros${purchase ? " + $ cost" : ""}, Save, and it'll be ${verb === "purchase" ? "stocked and logged" : "stocked"}.`, "info");
         }
     });
 }
 
 // Opens the inline Stock-it panel above the inventory rows for `name`.
-// Used by both Scan-to-stock and (later) any other "I want to stock this
-// specific thing" affordance. Idempotent: re-opens cleanly if called twice.
-function openStockPanel(name) {
+// Used by both Scan buttons and any other "I want to stock this specific thing"
+// affordance. `opts.logPurchase` (true/false) forces the "Log as purchase" box;
+// when omitted it defaults to checked iff the catalog has a known cost.
+// Idempotent: re-opens cleanly if called twice.
+function openStockPanel(name, opts = {}) {
     const view = $("view-inventory");
     if (!view || view.hidden) {
         // Nav to inventory page first; the panel is rendered into a slot there.
         location.hash = "#/inventory";
-        setTimeout(() => openStockPanel(name), 50);
+        setTimeout(() => openStockPanel(name, opts), 50);
         return;
     }
     let slot = $("scan-stock-slot");
@@ -431,7 +542,7 @@ function openStockPanel(name) {
         el("div", { class: "purchase-fields" }, [
             el("label", {}, [
                 (logBox = el("input", { type: "checkbox",
-                    checked: catalogCost > 0 })),
+                    checked: opts.logPurchase ?? (catalogCost > 0) })),
                 document.createTextNode(" Log as purchase"),
             ]),
             el("label", {}, [
@@ -522,6 +633,7 @@ function renderFoodDetail(name) {
                 onclick: () => onDeleteFood(f.name) }),
         ]),
         f.brand && el("p", { class: "desc brand", textContent: f.brand }),
+        f.category && el("p", { class: "muted", textContent: `Category: ${f.category}` }),
         f.desc && el("p", { class: "desc", textContent: f.desc }),
         f.serving_size && el("p", { class: "muted",
             textContent: `Per serving: ${f.serving_size}` }),
@@ -614,6 +726,9 @@ function renderFoodDetail(name) {
                 el("input", { name: "fat", type: "number", step: "0.1", min: "0", value: String(macros[3]) })]),
             el("label", { class: "wide" }, [document.createTextNode("Stores (comma separated)"),
                 el("input", { name: "stores", value: stores.join(", ") })]),
+            el("label", {}, [document.createTextNode("Category"),
+                el("input", { name: "category", list: "category-options", autocomplete: "off",
+                    value: f.category || "" })]),
             el("label", { class: "wide" }, [document.createTextNode("Description"),
                 el("input", { name: "desc", value: f.desc || "" })]),
         ]),
@@ -667,6 +782,7 @@ function renderMealDetail(name) {
             el("button", { class: "ghost danger-text", textContent: "Delete",
                 onclick: () => onDeleteMeal(m.name) }),
         ]),
+        m.category && el("p", { class: "muted", textContent: `Category: ${m.category}` }),
         m.desc && el("p", { class: "desc", textContent: m.desc }),
         el("div", { class: "stats" }, [
             el("div", {}, [el("span", { class: "muted", textContent: "Total cost: " }),
@@ -864,9 +980,12 @@ function renderInventoryPage() {
     ]);
 
     const head = [el("h2", { textContent: "Inventory" })];
-    if ("BarcodeDetector" in window) {
+    if (cameraAvailable()) {
+        // Two intents: stock only, or stock + log the spend (grocery haul).
         head.push(el("button", { class: "ghost", textContent: "Scan to stock",
-            onclick: onScanToStock }));
+            onclick: () => onScanToStock(false) }));
+        head.push(el("button", { class: "ghost", textContent: "Scan a purchase",
+            onclick: () => onScanToStock(true) }));
     }
     view.appendChild(el("section", { class: "detail" }, [
         el("div", { class: "detail-head" }, head),
@@ -1125,6 +1244,32 @@ function foodBodyFromForm(f, nameOverride) {
         fiber: parseFloat(f.fiber) || 0,
         sugar: parseFloat(f.sugar) || 0,
         sodium: parseFloat(f.sodium) || 0,
+        category: (f.category || "").trim(),
+    };
+}
+
+// Build a Food-shape save body from a catalog entry (the to_json shape that
+// /foods returns: stringified numbers + a macros array). Lets us re-save a food
+// with a single field changed (e.g. backfilling a barcode) without round-tripping
+// through the edit form.
+function foodBodyFromCatalog(f) {
+    const m = f.macros || ["0", "0", "0", "0"];
+    return {
+        name: f.name,
+        stores: Array.isArray(f.stores) ? f.stores : [],
+        cost: parseFloat(f.cost) || 0,
+        cals: parseInt(m[0]) || 0,
+        carbs: parseFloat(m[1]) || 0,
+        protein: parseFloat(m[2]) || 0,
+        fat: parseFloat(m[3]) || 0,
+        desc: f.desc || "",
+        brand: (f.brand || "").trim(),
+        serving_size: (f.serving_size || "").trim(),
+        barcode: (f.barcode || "").trim(),
+        fiber: parseFloat(f.fiber) || 0,
+        sugar: parseFloat(f.sugar) || 0,
+        sodium: parseFloat(f.sodium) || 0,
+        category: (f.category || "").trim(),
     };
 }
 
@@ -1151,13 +1296,26 @@ async function onAddFood(e) {
         await api.addFood(body);
         e.target.reset();
         e.target.hidden = true;
-        // If this Save came from a Scan-to-Stock detour through an unknown
-        // barcode, finish the gesture by stocking 1 of the new food.
+        // If this Save came from a scan detour through an unknown barcode,
+        // finish the gesture by stocking 1 -- and, for a "Scan a purchase",
+        // also log a spending entry at the cost just entered on the form.
         if (pendingStockOnSave) {
-            pendingStockOnSave = false;
+            const wantPurchase = pendingStockOnSave.purchase;
+            pendingStockOnSave = null;
             try {
                 await api.addStock({ name: body.name, amount: 1, kind: "food" });
-                setStatus(`Added food "${body.name}" and stocked 1.`, "info");
+                let msg = `Added food "${body.name}" and stocked 1.`;
+                if (wantPurchase && body.cost > 0) {
+                    try {
+                        await api.logStockPurchase({ name: body.name, qty: 1, unit_cost: body.cost });
+                        msg += ` Logged $${(+body.cost).toFixed(2)} purchase.`;
+                    } catch (err) {
+                        msg += ` (purchase log failed: ${err.message})`;
+                    }
+                } else if (wantPurchase) {
+                    msg += " Set a $ cost to log the purchase.";
+                }
+                setStatus(msg, "info");
             } catch (err) {
                 setStatus(`Added food "${body.name}", but stocking failed: ${err.message}`);
             }
@@ -1180,12 +1338,14 @@ async function onUpdateFood(form, name) {
 
 function addIngredientRow() {
     const rows = $("ingredient-rows");
-    const select = el("select", { name: "food" },
-        state.foods.map((f) => el("option", { value: f.name, textContent: f.name })));
+    // Typeahead over the catalog (datalist populated in refreshCatalogAux) instead
+    // of a long scroll-only <select>; the user can type to filter or pick from the list.
+    const food = el("input", { name: "food", list: "meal-food-options", autocomplete: "off",
+        placeholder: "type or pick a food" });
     const amount = el("input", { type: "number", min: "0.5", step: "0.5", value: "1", name: "amount" });
     const remove = el("button", { type: "button", class: "icon ghost", textContent: "×",
         onclick: () => row.remove() });
-    const row = el("div", { class: "ingredient-row" }, [select, amount, remove]);
+    const row = el("div", { class: "ingredient-row" }, [food, amount, remove]);
     rows.appendChild(row);
 }
 
@@ -1194,17 +1354,18 @@ async function onAddMeal(e) {
     const form = e.target;
     const name = form.elements["name"].value.trim();
     const desc = form.elements["desc"].value;
+    const category = (form.elements["category"].value || "").trim();
     if (!name) return setStatus("Meal needs a name.");
     const ingredients = {};
     for (const row of $("ingredient-rows").querySelectorAll(".ingredient-row")) {
-        const fname = row.querySelector("select").value;
-        const amt = parseFloat(row.querySelector("input").value) || 0;
+        const fname = row.querySelector('[name="food"]').value.trim();
+        const amt = parseFloat(row.querySelector('[name="amount"]').value) || 0;
         if (!fname || amt <= 0) continue;
         ingredients[fname] = (ingredients[fname] || 0) + amt;
     }
     if (!Object.keys(ingredients).length) return setStatus("Meal needs at least one ingredient.");
     try {
-        await api.addMeal({ name, foods: ingredients, desc });
+        await api.addMeal({ name, foods: ingredients, desc, category });
         form.reset();
         $("ingredient-rows").innerHTML = "";
         form.hidden = true;
@@ -1365,8 +1526,9 @@ function renderCurrentRoute() {
     if (parts.length === 0) {
         showView("view-dashboard");
         setActiveNav("/");
-        renderFoods(state.foods);
-        renderMeals(state.meals);
+        refreshCatalogAux();
+        renderFoods(state.foods.filter(inCatalogCategory));
+        renderMeals(state.meals.filter(inCatalogCategory));
         renderInventory(state.inventory);
         renderListDashboard(state.list);
         renderMenu(state.menu);
@@ -1404,6 +1566,50 @@ function renderCurrentRoute() {
     }
     // unknown route -> dashboard
     location.hash = "#/";
+}
+
+// ===========================================================================
+// auth
+// ===========================================================================
+
+function showApp(user) {
+    document.body.classList.remove("logged-out");
+    const ua = $("user-area");
+    if (ua) ua.hidden = false;
+    const ue = $("user-email");
+    if (ue) ue.textContent = user?.email || "";
+}
+
+function showLogin() {
+    document.body.classList.add("logged-out");
+    const ua = $("user-area");
+    if (ua) ua.hidden = true;
+}
+
+async function onLogin(e) {
+    e.preventDefault();
+    const form = e.target;
+    const email = form.elements.email.value.trim();
+    const password = form.elements.password.value;
+    const errEl = $("login-error");
+    errEl.hidden = true;
+    try {
+        const { user } = await api.login(email, password);
+        form.reset();
+        showApp(user);
+        await loadAll();
+        renderCurrentRoute();
+    } catch (err) {
+        errEl.textContent = err.status === 401
+            ? "Invalid email or password."
+            : `Sign-in failed: ${err.message}`;
+        errEl.hidden = false;
+    }
+}
+
+async function onLogout() {
+    try { await api.logout(); } catch { /* clearing the cookie is best-effort */ }
+    showLogin();
 }
 
 // ===========================================================================
@@ -1457,14 +1663,14 @@ function wireDashboardForms() {
     $("add-list-form").addEventListener("submit", onAddListFromDashboard);
     $("add-ingredient").addEventListener("click", addIngredientRow);
     $("lookup-btn").addEventListener("click", onLookupBarcode);
-    // Camera scan only works on browsers with BarcodeDetector (Chrome on
-    // Android, Edge on Android). iOS Safari/Chrome don't ship it -- and they
-    // would also need HTTPS to access the camera even if they did. Hide the
-    // button on those browsers so it can't confuse anyone; the manual Lookup
+    // Camera scan needs a usable camera, which requires a secure context (HTTPS
+    // or localhost) -- not the native BarcodeDetector API, since we polyfill that
+    // with ZXing-WASM where it's missing (iOS Safari, Firefox). Over plain-http
+    // LAN cameraAvailable() is false, so we hide the button and the manual Lookup
     // button next to the barcode input still works.
     const scanBtn = $("scan-btn");
     if (scanBtn) {
-        if ("BarcodeDetector" in window) {
+        if (cameraAvailable()) {
             scanBtn.addEventListener("click", onScanBarcode);
         } else {
             scanBtn.hidden = true;
@@ -1474,7 +1680,20 @@ function wireDashboardForms() {
 
 document.addEventListener("DOMContentLoaded", async () => {
     wireDashboardForms();
+    $("login-form").addEventListener("submit", onLogin);
+    $("logout-btn").addEventListener("click", onLogout);
+    // Any 401 from a later request (expired session) flips back to the login screen.
+    api.setUnauthorizedHandler(showLogin);
     window.addEventListener("hashchange", renderCurrentRoute);
-    await loadAll();
-    renderCurrentRoute();
+
+    // Gate on auth: only pull data if there's a live session.
+    try {
+        const user = await api.me();
+        showApp(user);
+        await loadAll();
+        renderCurrentRoute();
+    } catch (err) {
+        if (err.status === 401) showLogin();
+        else setStatus(`Could not reach the backend: ${err.message}. Is uvicorn running?`);
+    }
 });

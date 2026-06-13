@@ -1,0 +1,34 @@
+# cloudflared tunnel config for Cantina (Phase 3 — secure remote access).
+#
+# This is a LOCALLY-MANAGED tunnel: cloudflared reads this file + a credentials
+# JSON to dial out to Cloudflare's edge. Family members reach the app at the
+# public https:// hostname below; Cloudflare terminates TLS and forwards the
+# request down the tunnel to uvicorn on localhost. No inbound ports are opened
+# on your machine or router -- the tunnel is outbound-only.
+#
+# Fill in the two placeholders (<TUNNEL-UUID> and the hostname) after running
+# `cloudflared tunnel create cantina` -- see README.md in this directory.
+
+# The tunnel this config drives. `cloudflared tunnel create cantina` prints the
+# UUID and writes the matching credentials file under ~/.cloudflared/.
+tunnel: bb3924b2-5a0f-4d18-961d-37e4e493d502
+credentials-file: /home/penguin/.cloudflared/bb3924b2-5a0f-4d18-961d-37e4e493d502.json
+
+# Keep a single persistent connection set; cloudflared auto-reconnects.
+# (Defaults are fine for a household; left explicit for visibility.)
+protocol: auto
+no-autoupdate: true
+
+# Routing. Cloudflare matches top-to-bottom; the first rule that matches wins,
+# and the final catch-all (no `hostname`) is REQUIRED -- it returns 404 for any
+# host that isn't ours so the tunnel never proxies stray traffic.
+ingress:
+  - hostname: cantina.polarstingray.dev        # <-- your real hostname (Phase 3 step 3)
+    service: http://127.0.0.1:8000
+    originRequest:
+      # uvicorn is plain http on loopback; no TLS to verify on this hop.
+      noTLSVerify: true
+      # Don't send the public Host header upstream as something uvicorn rejects;
+      # the app doesn't pin Host, so passing it through is fine and keeps logs honest.
+      connectTimeout: 10s
+  - service: http_status:404

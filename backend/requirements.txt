@@ -1,0 +1,13 @@
+# Cantina backend dependencies.
+# Install into a venv:  python -m venv src/venv && src/venv/bin/pip install -r requirements.txt
+# Pinned to the versions the app is developed against; bump deliberately.
+
+# --- runtime ---------------------------------------------------------------
+fastapi==0.136.3
+uvicorn[standard]==0.48.0
+pydantic==2.13.4
+
+# --- tests -----------------------------------------------------------------
+# httpx backs fastapi.testclient.TestClient; pytest runs backend/tests.
+pytest==8.3.4
+httpx==0.28.1

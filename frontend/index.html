@@ -7,7 +7,25 @@
     <link rel="stylesheet" href="css/styles.css">
     <script type="module" src="js/app.js"></script>
 </head>
-<body>
+<body class="logged-out">
+    <!-- LOGIN SCREEN (shown when body.logged-out) ============================ -->
+    <div id="login-screen">
+        <form id="login-form" class="form login-form">
+            <h1>Cantina</h1>
+            <p class="tagline">sign in to your household</p>
+            <label class="wide">Email
+                <input name="email" type="email" autocomplete="username" required>
+            </label>
+            <label class="wide">Password
+                <input name="password" type="password" autocomplete="current-password" required>
+            </label>
+            <div class="form-actions">
+                <button type="submit">Sign in</button>
+            </div>
+            <p id="login-error" class="login-error" hidden></p>
+        </form>
+    </div>
+
     <header>
         <div class="header-top">
             <h1><a href="#/">Cantina</a></h1>
@@ -17,11 +35,19 @@
                 <a href="#/inventory" data-route="/inventory">Inventory</a>
                 <a href="#/spending" data-route="/spending">Spending</a>
             </nav>
+            <div class="user-area" id="user-area" hidden>
+                <span id="user-email" class="muted"></span>
+                <button type="button" id="logout-btn" class="ghost">Log out</button>
+            </div>
         </div>
         <p class="tagline">household grocery &amp; meal tracker</p>
     </header>
 
     <div id="status" class="status" hidden></div>
+
+    <!-- Shared autocomplete sources, populated from the catalog on each load. -->
+    <datalist id="category-options"></datalist>
+    <datalist id="meal-food-options"></datalist>
 
     <!-- DASHBOARD ============================================================ -->
     <main id="view-dashboard" class="view">
@@ -46,6 +72,7 @@
                     <label>Protein (g)<input name="protein" type="number" step="0.1" min="0" value="0"></label>
                     <label>Fat (g)<input name="fat" type="number" step="0.1" min="0" value="0"></label>
                     <label class="wide">Stores (comma separated)<input name="stores" placeholder="cub, target"></label>
+                    <label>Category<input name="category" list="category-options" placeholder="Produce, Dairy, ..." autocomplete="off"></label>
                     <label class="wide">Description<input name="desc"></label>
                 </div>
                 <details class="disclosure">
@@ -64,6 +91,7 @@
                 </div>
             </form>
 
+            <div id="catalog-filter" class="filter-row" hidden></div>
             <div id="foods" class="cards"></div>
         </section>
 
@@ -76,6 +104,7 @@
             <form id="add-meal-form" class="form" hidden>
                 <div class="form-grid">
                     <label class="wide">Name<input name="name" required></label>
+                    <label>Category<input name="category" list="category-options" placeholder="Dinner, Snack, ..." autocomplete="off"></label>
                     <label class="wide">Description<input name="desc"></label>
                 </div>
                 <div class="ingredients">

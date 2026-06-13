@@ -9,7 +9,7 @@ meal - *name, list of foods, helper functions for calculating total cost and mac
 
 class Food:
     def __init__(self, name, stores=None, cost=0.0, cals=0, carbs=0.0, prot=0.0, fat=0.0, desc="", pic=None,
-                 brand="", serving_size="", barcode="", fiber=0.0, sugar=0.0, sodium=0.0):
+                 brand="", serving_size="", barcode="", fiber=0.0, sugar=0.0, sodium=0.0, category=""):
         self.name = name
         self.stores = stores
         self.cost = cost
@@ -27,6 +27,7 @@ class Food:
         self.fiber = fiber
         self.sugar = sugar
         self.sodium = sodium      # in mg
+        self.category = category   # free-form grouping label (e.g. "Produce")
 
     @staticmethod
     def create(food_json) :
@@ -55,7 +56,8 @@ class Food:
                     barcode=food_json.get("barcode", "") or "",
                     fiber=_num(food_json.get("fiber"), float),
                     sugar=_num(food_json.get("sugar"), float),
-                    sodium=_num(food_json.get("sodium"), float))
+                    sodium=_num(food_json.get("sodium"), float),
+                    category=food_json.get("category", "") or "")
 
     # Serialize food as json to be stored in binary and later sqlite db
     def to_json(self) :
@@ -73,6 +75,7 @@ class Food:
             "fiber" : str(self.fiber),
             "sugar" : str(self.sugar),
             "sodium" : str(self.sodium),
+            "category" : self.category,
         }
 
     def __str__(self) :
@@ -86,10 +89,11 @@ class Food:
     
 
 class Meal:
-    def __init__(self, name, foods, desc="", pic=None):
+    def __init__(self, name, foods, desc="", pic=None, category=""):
         self.name = name
         self.desc = desc
         self.pic = pic
+        self.category = category   # free-form grouping label (e.g. "Dinner")
 
         self.foods = {}
         if isinstance(foods, list) :
@@ -128,7 +132,8 @@ class Meal:
         return Meal(meal_json.get("name"),
                     foods,
                     desc=meal_json.get("desc"),
-                    pic=meal_json.get("pic"))
+                    pic=meal_json.get("pic"),
+                    category=meal_json.get("category", "") or "")
 
     # Serialize the meal; ingredients are stored as {food_name: amount} and the
     # full food details are looked up from the database on load.
@@ -138,7 +143,8 @@ class Meal:
                 "name" : self.name,
                 "foods": ingredients,
                 "desc" : self.desc,
-                "pic" : self.pic}
+                "pic" : self.pic,
+                "category" : self.category}
 
     def add_food(self, food, amount=1) :
         if not food :

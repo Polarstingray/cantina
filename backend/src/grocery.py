@@ -1,80 +1,86 @@
 '''
 grocery.py
-    write and read from binary database (sqlite in the future) and dynamic grocery list csv
-    add food items to database
-    add meals to database
-    keep track of a list of foods, their cost, and where to buy them
+    The food + meal catalog. Storage moved from a flat JSON .bin file to SQLite
+    (see db.py), but the interface is unchanged: read_json_from_bin returns the
+    catalog as a list of {type:"food"/"meal", ...} dicts and write_json_to_bin
+    persists such a list. add_to_bin / remove_from_bin / jsons_to_objects keep
+    their old behavior on top of those two helpers, so api.py and the frontend
+    are untouched by the move.
+
+    Names are unique per household: re-adding an existing name replaces the old
+    entry, and meals reference their ingredients by name.
 '''
 
-import os
 import json
-import shutil
-import threading
 from foods import *
-FOOD_AND_MEALS=os.path.join(os.path.dirname(__file__), "data.bin")
+from config import data_path
+from db import get_conn, current_household_id, insert_food, insert_meal
 
-# One lock per file path, shared by read + write so we never observe a torn
-# state from another worker thread. The single-uvicorn-worker assumption
-# (one process, threadpool for sync handlers) makes a threading.Lock enough --
-# do NOT scale to --workers >1 without switching to fcntl.flock or sqlite.
-_LOCKS: dict[str, threading.Lock] = {}
-_LOCKS_GUARD = threading.Lock()
-
-def _lock_for(path: str) -> threading.Lock :
-    with _LOCKS_GUARD :
-        lock = _LOCKS.get(path)
-        if lock is None :
-            lock = threading.Lock()
-            _LOCKS[path] = lock
-        return lock
-
-# Keep 3 rotated copies (.bak.0 newest, .bak.2 oldest) so a corrupt write or
-# a fat-fingered delete can be recovered by hand. Called from within the
-# write lock so no torn state ever ends up in a backup.
-def _rotate_backup(db: str, depth: int = 3) :
-    if not os.path.exists(db) :
-        return
-    for i in range(depth - 1, 0, -1) :
-        src = f"{db}.bak.{i - 1}"
-        dst = f"{db}.bak.{i}"
-        if os.path.exists(src) :
-            os.replace(src, dst)
-    try :
-        shutil.copyfile(db, f"{db}.bak.0")
-    except OSError :
-        pass
+# Catalog "token": still passed around by callers (api.py, menu.py) as the db
+# handle. Storage is SQLite now, so the value is only an identifier.
+FOOD_AND_MEALS = data_path("data.bin")
 
 
-# Food and Meal database
-# A single binary file holding a json list of serialized food and meal objects.
-# Each object carries a "type" field ("food" or "meal") so it can be rebuilt
-# into the right class on load. Names are unique: re-adding an existing name
-# replaces the old entry, and meals reference their ingredients by name.
-
-def write_json_to_bin(json_list, db=FOOD_AND_MEALS) :
-    json_str = json.dumps(json_list)
-    payload = json_str.encode('utf-8')
-    tmp = db + ".tmp"
-    with _lock_for(db) :
-        _rotate_backup(db)
-        # Write to a sibling tmp file, fsync, then atomically replace.
-        with open(tmp, "wb") as f :
-            f.write(payload)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, db)
-
+# --- catalog persistence (SQLite-backed) -----------------------------------
+# read_json_from_bin / write_json_to_bin keep the old list-of-dicts contract so
+# the rest of the app doesn't change. The `db` argument is vestigial (the
+# catalog lives in one place now) and kept only for signature compatibility.
 
 def read_json_from_bin(db=FOOD_AND_MEALS) :
-    with _lock_for(db) :
-        try :
-            with open(db, "rb") as f :
-                binary = f.read()
-        except FileNotFoundError :
-            return []
-    if not binary :
-        return []
-    return json.loads(binary.decode('utf-8'))
+    with get_conn() as conn :
+        rows = conn.execute(
+            '''SELECT name, stores, cost, cals, carbs, protein, fat, descr, pic,
+                      brand, serving_size, barcode, fiber, sugar, sodium, category
+               FROM foods WHERE household_id = ? ORDER BY id''',
+            (current_household_id(),)).fetchall()
+        catalog = []
+        for r in rows :
+            # Rebuild a Food and re-serialize so the dict shape matches exactly
+            # what the API has always returned (numbers stringified, etc.).
+            food = Food(r["name"], json.loads(r["stores"]), r["cost"], r["cals"],
+                        r["carbs"], r["protein"], r["fat"], r["descr"], r["pic"],
+                        brand=r["brand"], serving_size=r["serving_size"],
+                        barcode=r["barcode"], fiber=r["fiber"], sugar=r["sugar"],
+                        sodium=r["sodium"], category=r["category"])
+            catalog.append(food.to_json())
+
+        meals = conn.execute(
+            "SELECT id, name, descr, pic, category FROM meals WHERE household_id = ? ORDER BY id",
+            (current_household_id(),)).fetchall()
+        for m in meals :
+            ing = conn.execute(
+                "SELECT food_name, amount FROM meal_ingredients WHERE meal_id = ? ORDER BY rowid",
+                (m["id"],)).fetchall()
+            catalog.append({
+                "type": "meal",
+                "name": m["name"],
+                "foods": {i["food_name"]: i["amount"] for i in ing},
+                "desc": m["descr"],
+                "pic": m["pic"],
+                "category": m["category"],
+            })
+        return catalog
+
+
+def write_json_to_bin(json_list, db=FOOD_AND_MEALS) :
+    '''Replace the whole catalog with `json_list` (a list of food/meal dicts).'''
+    hid = current_household_id()
+    with get_conn() as conn :
+        conn.execute(
+            "DELETE FROM meal_ingredients WHERE meal_id IN "
+            "(SELECT id FROM meals WHERE household_id = ?)", (hid,))
+        conn.execute("DELETE FROM meals WHERE household_id = ?", (hid,))
+        conn.execute("DELETE FROM foods WHERE household_id = ?", (hid,))
+        for obj in json_list :
+            if obj.get("type") == "food" :
+                food = Food.create(obj)
+                if food :
+                    insert_food(conn, food, hid)
+            elif obj.get("type") == "meal" and obj.get("name") :
+                insert_meal(conn, obj.get("name"), obj.get("desc") or "",
+                            obj.get("pic"), obj.get("foods") or {}, hid,
+                            category=obj.get("category") or "")
+
 
 # Rebuild Food and Meal objects from the json list. Foods are built first so
 # that each meal can resolve its ingredient names against the food catalog.
@@ -130,7 +136,7 @@ def unique_list(dat1, dat2) :
     return unique_objects
 
 def add_to_bin(item, db=FOOD_AND_MEALS) :
-    old_db = read_json_from_bin()
+    old_db = read_json_from_bin(db)
     old_db.append(item)
     new_db = objects_to_jsons(jsons_to_objects(old_db)) # ensures no duplicates
     write_json_to_bin(new_db, db)
@@ -149,64 +155,3 @@ def remove_from_bin(name, kind="food", db=FOOD_AND_MEALS) :
         return -1
     write_json_to_bin(new_data, db)
     return 0
-
-
-        
-def main() :
-    apple = Food("apple", ["cub, target, walmart, co-op"], 2.0, 40, 2, 0, 1, "Honeycrisp apple")
-    crust = Food("pie crust", ["cub", "target"], 3.99, 100, 20, 4, 5, "Sweet-Butter pie crust")
-    apple2 = Food("apple", ["co-op"], 3.99, 40, 2, 0, 1, "Grannysmith apple")
-
-    apple_pie = Meal("apple pie", [apple, apple, apple, crust], desc="an apple pie")
-    
-    print("===================")
-    print("Adding to bin\n")
-
-
-    add_to_bin(apple.to_json())
-    add_to_bin(crust.to_json())
-    add_to_bin(apple_pie.to_json())
-    add_to_bin(apple2.to_json())
-
-    loaded_data = read_json_from_bin()
-    loaded_food,loaded_meals = jsons_to_objects(loaded_data)
-
-    print(loaded_data)
-
-    print("\n\n===================================\nFoods and Meals")
-    for food in loaded_food :
-        print(food)
-    
-    for meal in loaded_meals :
-        print(meal)
-        for fo in meal.foods :
-            for i in range(meal.foods[fo]) :
-                print(f"\t-{fo}")
-
-    # rice = Food("rice", ["cub, target, walmart, co-op"], 13.99, 100, 30, 5, 1, "jasmine rice")
-    # pizza_crust = Food("pie crust", ["cub", "target"], 3.99, 100, 20, 3, 2, "pizza dough")
-
-    # mystery_meal = Meal("nonsense", [rice, apple, pizza_crust, crust], {}, "an apple pie")
-
-    # new_foods = loaded_data[0]
-    # new_meals = loaded_data[1]
-
-    # new_foods.append(rice)
-    # new_foods.append(pizza_crust)
-    # new_meals.append(mystery_meal)
-
-    # print("adding new items to db")
-    # # add_to_db([new_foods, new_meals])
-
-    # rm_from_db("apple")
-
-    # print("=============================")
-    # print("reading db\n")
-    # for item in read_db() :
-    #     for ele in item :
-    #         print(ele)
-
-
-
-if __name__ == "__main__" :
-    main()

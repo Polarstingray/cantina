@@ -1,8 +1,18 @@
 *.pkl
 *db
+*.db-wal
+*.db-shm
 *.bin
 *.bin.bak.*
 *.tmp
 *venv
 __pycache__/
 *.pyc
+
+# cloudflared tunnel secrets must never be committed. They normally live in
+# ~/.cloudflared/ (the config references them by absolute path); this guards
+# against a stray copy landing in the deploy dir. config.yml itself is safe
+# (it only holds the tunnel UUID + a path), so it stays tracked.
+deploy/cloudflared/*.json
+deploy/cloudflared/*.pem
+deploy/cloudflared/cert.pem
