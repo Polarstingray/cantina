@@ -118,14 +118,21 @@ def objects_to_jsons(data) :
     return json_list
 
 def unique_list(dat1, dat2) :
+    combined = list(dat1) + list(dat2)
+
+    # For a duplicate name the most-recently-added entry wins, but the
+    # surviving entries keep their original insertion order (the slot where
+    # the name first appeared). This avoids reversing the list on every call.
+    latest = {}
+    for obj in combined :
+        latest[obj.name] = obj
+
     names = []
     unique_objects = []
-    combined = list(reversed(dat1)) + list(reversed(dat2))
-
     for obj in combined :
         if obj.name not in names :
             names.append(obj.name)
-            unique_objects.append(obj)
+            unique_objects.append(latest[obj.name])
     return unique_objects
 
 def add_to_bin(item, db=FOOD_AND_MEALS) :
