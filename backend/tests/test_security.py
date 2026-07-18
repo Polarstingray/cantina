@@ -7,6 +7,7 @@ permissions.
 
 import os
 import stat
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -23,8 +24,10 @@ def _now() :
     return datetime.now(timezone.utc)
 
 def _set_session_field(token, field, value) :
+    # The table stores sha256(token), so look rows up by the hash.
     with db.get_conn() as conn :
-        conn.execute(f"UPDATE sessions SET {field} = ? WHERE token = ?", (value, token))
+        conn.execute(f"UPDATE sessions SET {field} = ? WHERE token = ?",
+                     (value, auth._hash_token(token)))
 
 
 # --- session timeouts ------------------------------------------------------
@@ -51,7 +54,8 @@ def test_active_session_slides_and_survives(client) :
     _set_session_field(token, "last_used_at", recent)
     assert client.get("/auth/me").status_code == 200
     with db.get_conn() as conn :
-        after = conn.execute("SELECT last_used_at FROM sessions WHERE token = ?", (token,)).fetchone()["last_used_at"]
+        after = conn.execute("SELECT last_used_at FROM sessions WHERE token = ?",
+                             (auth._hash_token(token),)).fetchone()["last_used_at"]
     assert after > recent
 
 
@@ -127,3 +131,42 @@ def test_db_file_is_owner_only(client) :
     # `client` has triggered db init, which chmods the file to 0600.
     mode = stat.S_IMODE(os.stat(db.DB_PATH).st_mode)
     assert mode == 0o600, oct(mode)
+
+
+# --- session tokens hashed at rest ------------------------------------------
+
+def test_session_token_not_stored_in_plaintext(client) :
+    token = client.cookies.get(auth.COOKIE_NAME)
+    with db.get_conn() as conn :
+        stored = [r["token"] for r in conn.execute("SELECT token FROM sessions")]
+    assert stored, "expected a live session row"
+    assert token not in stored                       # raw cookie value never at rest
+    assert auth._hash_token(token) in stored         # ...only its sha256
+    # and the session still works + revokes through the hashed lookup
+    assert client.get("/auth/me").status_code == 200
+    assert client.post("/auth/logout").status_code == 200
+    assert client.get("/auth/me").status_code == 401
+
+
+# --- rate limiter memory bound ----------------------------------------------
+
+def test_ratelimit_prunes_stale_keys() :
+    ratelimit.reset()
+    old = time.time() - ratelimit.WINDOW_SECONDS - 1
+    try :
+        # Fill past the prune threshold with already-expired keys.
+        for i in range(ratelimit._PRUNE_THRESHOLD) :
+            ratelimit._attempts[f"ipemail:1.2.3.4|u{i}@x"] = [old]
+        ratelimit.record_failure("5.6.7.8", "fresh@x")
+        # The sweep dropped every stale key; only the fresh failure remains.
+        assert len(ratelimit._attempts) == 2   # ipemail + ip key for the new failure
+    finally :
+        ratelimit.reset()
+
+
+# --- barcode input strictness -----------------------------------------------
+
+def test_barcode_rejects_unicode_digits(client) :
+    # isdigit() alone would accept these; they must never hit the outbound URL.
+    assert client.get("/lookup/barcode/٣٣٣").status_code == 400
+    assert client.get("/lookup/barcode/²²").status_code == 400

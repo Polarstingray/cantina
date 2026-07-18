@@ -10,6 +10,6 @@ Description=Cantina data backup
 
 [Service]
 Type=oneshot
-Environment=CANTINA_DATA_DIR=/home/penguin/projects/cantina/backend/src
+Environment=CANTINA_DATA_DIR=%h/cantina-data
 Environment=CANTINA_BACKUP_DIR=%h/cantina-backups
 ExecStart=/home/penguin/projects/cantina/backend/deploy/backup.sh

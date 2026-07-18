@@ -5,8 +5,9 @@ auth.py
     - Passwords: PBKDF2-HMAC-SHA256 (stdlib hashlib), stored as
       "pbkdf2_sha256$iterations$salt_hex$hash_hex". No native build deps; argon2
       is a reasonable future upgrade.
-    - Sessions: a random opaque token (server-side, in the `sessions` table) set
-      as an httponly cookie. Revocable and secret-free, unlike a signed JWT.
+    - Sessions: a random opaque token set as an httponly cookie; the server
+      stores only sha256(token) in the `sessions` table, so a stolen database
+      or backup can't be replayed as a cookie. Revocable, unlike a signed JWT.
     - get_current_user is an ASYNC dependency on purpose: it sets the request's
       household via db.set_current_household, and an async dependency runs in the
       request's task context so that value propagates into the sync endpoint and
@@ -143,6 +144,12 @@ def list_users(household_id: int) :
 
 # --- sessions --------------------------------------------------------------
 
+def _hash_token(token: str) -> str :
+    '''Sessions are stored as sha256(token), so a leaked db file or backup
+    can't be replayed as a cookie. The raw token only ever lives in the cookie.'''
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def _parse_iso(s) :
     if not s :
         return None
@@ -168,7 +175,7 @@ def create_session(user_id: int) -> str :
     with db.get_conn() as conn :
         conn.execute(
             "INSERT INTO sessions (token, user_id, expires_at, last_used_at) VALUES (?, ?, ?, ?)",
-            (token, user_id, expires, now.isoformat()))
+            (_hash_token(token), user_id, expires, now.isoformat()))
     return token
 
 
@@ -178,11 +185,12 @@ def get_session_user(token: str | None) :
     (now - last_used_at), and slides the idle clock forward on each use.'''
     if not token :
         return None
+    token_hash = _hash_token(token)
     with db.get_conn() as conn :
         r = conn.execute(
             "SELECT u.id, u.household_id, u.email, u.role, s.expires_at, s.last_used_at "
             "FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?",
-            (token,)).fetchone()
+            (token_hash,)).fetchone()
     if not r :
         return None
 
@@ -197,7 +205,7 @@ def get_session_user(token: str | None) :
         return None
 
     with db.get_conn() as conn :                                            # slide idle clock
-        conn.execute("UPDATE sessions SET last_used_at = ? WHERE token = ?", (now.isoformat(), token))
+        conn.execute("UPDATE sessions SET last_used_at = ? WHERE token = ?", (now.isoformat(), token_hash))
     return {"id": r["id"], "household_id": r["household_id"], "email": r["email"], "role": r["role"]}
 
 
@@ -205,7 +213,7 @@ def delete_session(token: str | None) :
     if not token :
         return
     with db.get_conn() as conn :
-        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        conn.execute("DELETE FROM sessions WHERE token = ?", (_hash_token(token),))
 
 
 def delete_user_sessions(user_id: int) :

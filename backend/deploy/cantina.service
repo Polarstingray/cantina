@@ -8,7 +8,11 @@ Type=simple
 WorkingDirectory=/home/penguin/projects/cantina/backend/src
 # Set the data dir EXPLICITLY so the server and the manage.py CLI can never drift
 # to different databases. Use this exact value when running manage.py too.
-Environment=CANTINA_DATA_DIR=/home/penguin/projects/cantina/backend/src
+# Kept OUTSIDE the source tree so (a) the sandbox below can make the code
+# read-only to the service and (b) the database never sits in the git worktree.
+# One-time move from the old in-tree location:
+#   mkdir -p ~/cantina-data && mv backend/src/cantina.db* backend/src/*.bin ~/cantina-data/ 2>/dev/null
+Environment=CANTINA_DATA_DIR=%h/cantina-data
 # --- Phase 3 (remote access over HTTPS via the tunnel) ---
 # Uncomment these once cloudflared terminates TLS in front of the app:
 Environment=CANTINA_SECURE_COOKIES=1
@@ -18,12 +22,13 @@ Environment=CANTINA_TRUSTED_PROXY=1
 ExecStart=/home/penguin/projects/cantina/backend/src/venv/bin/uvicorn api:app --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=3
-# Keep the process tightly scoped -- it only ever needs its own files.
+# Keep the process tightly scoped: the only writable path is the data dir, so
+# a compromised process can't rewrite its own source under projects/cantina.
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
+ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/penguin/projects/cantina/backend/src
+ReadWritePaths=%h/cantina-data
 
 [Install]
 WantedBy=default.target

@@ -6,9 +6,11 @@
 #   timestamped tarball to a separate BACKUP_DIR (point it at an external drive
 #   or a synced folder) and prunes to the newest KEEP archives.
 #
-#   Safe to run while the server is up: the app writes every file atomically
-#   (tmp file + fsync + os.replace), so each .bin / .db is always a complete,
-#   self-consistent snapshot.
+#   Safe to run while the server is up: the .bin files are written atomically
+#   (tmp file + fsync + os.replace), and the sqlite database is snapshotted via
+#   sqlite3's online-backup command (".backup"), which takes a consistent copy
+#   even mid-write under WAL mode. A plain cp/tar of a live WAL database is NOT
+#   consistent -- never bypass the .backup step.
 #
 #   Env (all optional):
 #     CANTINA_DATA_DIR    where the data lives   (default: backend/src)
@@ -34,17 +36,40 @@ mkdir -p "$BACKUP_DIR"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 archive="$BACKUP_DIR/cantina-$stamp.tar.gz"
 
-# Real data only: the .bin files today, plus data.db after the sqlite migration.
-# Skip the in-place .bak rotations and .tmp scratch files.
+# Stage the snapshot in a scratch dir: legacy .bin files (already atomic on
+# disk) plus a consistent copy of cantina.db taken with sqlite3's online-backup
+# command. Skip the in-place .bak rotations and .tmp scratch files.
+staging="$(mktemp -d)"
+trap 'rm -rf "$staging"' EXIT
+
 cd "$DATA_DIR"
-files="$(ls *.bin data.db 2>/dev/null || true)"
+for f in *.bin ; do
+    [ -e "$f" ] && cp "$f" "$staging/"
+done
+if [ -f cantina.db ] ; then
+    if command -v sqlite3 >/dev/null 2>&1 ; then
+        sqlite3 cantina.db ".backup '$staging/cantina.db'"
+    else
+        # No sqlite3 CLI: python3 is always present (the app runs on it) and
+        # its sqlite3 module exposes the same online-backup API.
+        python3 - "$PWD/cantina.db" "$staging/cantina.db" <<'PY'
+import sqlite3, sys
+src = sqlite3.connect(sys.argv[1])
+dst = sqlite3.connect(sys.argv[2])
+with dst :
+    src.backup(dst)
+dst.close() ; src.close()
+PY
+    fi
+fi
+
+files="$(ls "$staging" 2>/dev/null || true)"
 if [ -z "$files" ] ; then
     echo "backup.sh: no data files in $DATA_DIR -- nothing to back up" >&2
     exit 0
 fi
 
-# shellcheck disable=SC2086
-tar -czf "$archive" $files
+tar -czf "$archive" -C "$staging" .
 echo "backup.sh: wrote $archive"
 
 # Retention: keep the newest $KEEP archives, delete the rest.
