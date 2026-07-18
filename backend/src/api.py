@@ -102,6 +102,7 @@ async def security_middleware(request: Request, call_next) :
         response.headers["Cache-Control"] = "no-store"  # auth-gated; hard override
     else:
         response.headers.setdefault("Cache-Control", "no-cache, must-revalidate")
+    return response
 
 
 # --- request bodies --------------------------------------------------------
@@ -230,7 +231,9 @@ def update_food(name: str, food: FoodIn) :
 # uses this to prefill the add-food form; saving the food is a separate POST/PUT.
 @router.get("/lookup/barcode/{code}")
 def lookup_barcode(code: str) :
-    if not code.isdigit() or len(code) > 32 :
+    # isascii() too: bare isdigit() accepts Unicode digits (e.g. '٣', '²'),
+    # which must not reach the outbound OpenFoodFacts URL.
+    if not (code.isascii() and code.isdigit()) or len(code) > 32 :
         raise HTTPException(status_code=400, detail="barcode must be digits, <=32 chars")
     result = lookup.lookup(code)
     if result is None :

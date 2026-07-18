@@ -65,8 +65,9 @@ CREATE TABLE IF NOT EXISTS users (
     created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
--- Server-side sessions: a random opaque token in an httponly cookie maps to a
--- user. Revocable (delete the row) and carries no secret, unlike a signed JWT.
+-- Server-side sessions: the httponly cookie holds a random opaque token; this
+-- table stores sha256(token), so the db alone can't mint a valid cookie.
+-- Revocable (delete the row) and carries no secret, unlike a signed JWT.
 CREATE TABLE IF NOT EXISTS sessions (
     token        TEXT    PRIMARY KEY,
     user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -177,6 +178,15 @@ def _migrate(conn) :
         existing = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
         if "category" not in existing :
             conn.execute(f"ALTER TABLE {table} ADD COLUMN category TEXT NOT NULL DEFAULT ''")
+
+    # Session tokens moved from plaintext to sha256 at rest. Old plaintext rows
+    # can't be matched by the hashed lookup, so drop them once (everyone just
+    # logs in again) rather than carrying dual-format lookup code forever.
+    # (meta may not exist yet when migrating a pre-meta database.)
+    conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+    if conn.execute("SELECT 1 FROM meta WHERE key = 'session_tokens_hashed'").fetchone() is None :
+        conn.execute("DELETE FROM sessions")
+        conn.execute("INSERT INTO meta (key, value) VALUES ('session_tokens_hashed', '1')")
 
 
 def _init() :

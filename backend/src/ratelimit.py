@@ -23,12 +23,21 @@ TRUSTED_PROXY = os.environ.get("CANTINA_TRUSTED_PROXY", "0") == "1"
 _lock = threading.Lock()
 _attempts: dict[str, list[float]] = {}   # key -> failure timestamps within the window
 
+# Stale keys are normally pruned lazily (only when queried), so a spray of
+# unique emails would grow the dict forever. Past this size, record_failure
+# sweeps out every expired key.
+_PRUNE_THRESHOLD = 10_000
+
 
 def client_ip(request) -> str :
     if TRUSTED_PROXY :
-        fwd = request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for")
+        # Only CF-Connecting-IP: Cloudflare always sets it, and unlike
+        # X-Forwarded-For its value can't be seeded by the client (the first
+        # XFF hop is client-controlled, which would let an attacker mint
+        # unlimited fake IPs to dodge the throttle).
+        fwd = request.headers.get("cf-connecting-ip")
         if fwd :
-            return fwd.split(",")[0].strip()
+            return fwd.strip()
     return request.client.host if request.client else "?"
 
 
@@ -61,6 +70,9 @@ def retry_after(ip: str, email: str) :
 def record_failure(ip: str, email: str) :
     now = time.time()
     with _lock :
+        if len(_attempts) >= _PRUNE_THRESHOLD :
+            for key in list(_attempts) :
+                _fresh(key, now)
         for key, _ in _keys(ip, email) :
             _attempts.setdefault(key, []).append(now)
 

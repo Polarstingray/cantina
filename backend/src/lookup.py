@@ -99,7 +99,9 @@ def _fetch_prices(code: str) -> float | None :
 
 def lookup(code: str) -> dict | None :
     code = (code or "").strip()
-    if not code or not code.isdigit() :
+    # ASCII digits only -- bare isdigit() also accepts Unicode digits, which
+    # would end up interpolated into the outbound request URL.
+    if not code or not (code.isascii() and code.isdigit()) :
         return None
     if code in _CACHE :
         return _CACHE[code]
