@@ -1,0 +1,54 @@
+# Fly.io config for the public cantina demo.
+#
+# Deploy from the REPO ROOT (the image needs backend/ and frontend/). `app` below
+# must be globally unique across Fly — rename it (and PUBLIC_BASE_URL) first.
+#
+#   fly apps create cantina-demo
+#   fly deploy --config deploy/demo/fly.toml --dockerfile deploy/demo/Dockerfile .
+#   fly scale count 1     # REQUIRED — see below
+#
+# This demo MUST run on exactly ONE machine. Its SQLite DB is ephemeral and
+# machine-local, so a second machine serves a second, divergent dataset. Fly has
+# no fly.toml key for machine count — `fly scale count 1` is the control.
+#
+# No [mounts] section: the DB is ephemeral on purpose, so every restart repaints
+# the fabricated dataset (see deploy/demo/entrypoint.sh + backend/src/seed_demo.py).
+
+app = "cantina-demo"
+primary_region = "iad"
+
+[build]
+
+[env]
+  CANTINA_DATA_DIR = "/data/demo"
+  CANTINA_HOST = "0.0.0.0"
+  CANTINA_PORT = "8000"
+  # Re-seed the fabricated dataset on every boot.
+  DEMO_RESET = "true"
+  # Fly terminates TLS in front of the app; mark cookies Secure and trust the
+  # forwarded scheme/IP accordingly (cantina reads these two flags directly).
+  CANTINA_SECURE_COOKIES = "1"
+  CANTINA_TRUSTED_PROXY = "1"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Scale to zero when idle. A cold start re-seeds, so the demo self-cleans after
+  # anyone pokes at it — an idle demo costs ~$0.05/mo instead of ~$3.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    # cantina serves the frontend at "/" (public, not auth-gated), so a 200 here
+    # means the app is up. There's no dedicated /health endpoint.
+    path = "/"
+    method = "GET"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "15s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpus = 1

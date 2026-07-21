@@ -1,0 +1,12 @@
+{
+  "name": "cantina-frontend",
+  "private": true,
+  "description": "Dev tooling for the cantina frontend (demo walkthrough recording).",
+  "scripts": {
+    "demo:record": "node scripts/record-walkthrough.mjs",
+    "demo:convert": "ffmpeg -y -i ../docs/video/walkthrough.webm -movflags +faststart -pix_fmt yuv420p ../docs/video/walkthrough.mp4 && ffmpeg -y -i ../docs/video/walkthrough.webm -vf \"fps=12,scale=960:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse\" ../docs/video/walkthrough.gif"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
+}
