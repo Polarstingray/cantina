@@ -57,10 +57,11 @@ FOODS = [
     ("Almonds",        "Snacks",  9.49,  164,  6.1, 6.0, 14.0, "Blue Diamond"),
 ]
 
-# name -> on-hand quantity
+# name -> on-hand quantity. Includes every ingredient of the seeded meal
+# (Chicken_Breast, White_Rice, Baby_Spinach) so it shows as makeable on the menu.
 INVENTORY = {
     "Whole_Milk": 2, "Large_Eggs": 12, "White_Rice": 3,
-    "Chicken_Breast": 2, "Bananas": 6, "Olive_Oil": 1,
+    "Chicken_Breast": 2, "Baby_Spinach": 3, "Bananas": 6, "Olive_Oil": 1,
 }
 
 # A meal built from catalog foods: name -> {food: amount}
