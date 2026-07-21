@@ -1,0 +1,13 @@
+# Keep the demo image small and — critically — free of any real/dev data. The
+# public demo seeds its own fabricated dataset (backend/src/seed_demo.py), so no
+# database or legacy .bin files should ever be copied into the image.
+**/__pycache__/
+**/*.pyc
+backend/src/venv/
+**/*.db
+**/*.db-*
+**/*.bin
+**/*.bin.bak.*
+.git/
+.qodo/
+docs/video/*.webm
